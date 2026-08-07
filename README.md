@@ -12,10 +12,19 @@ This repository is the demo build -- a five-room hand-designed museum with its o
 
 ```bash
 npm install
+```
+
+Creator accounts and user-created museums are backed by Supabase (see "Accounts, ownership, and museum visibility" below) -- the app **will not start** without it configured:
+
+1. Create a Supabase project, then copy its Project URL and anon/public key into a new `.env.local` (see `.env.example`).
+2. Run `supabase/migrations/0001_init.sql` and `supabase/migrations/0002_museum_visibility.sql`, in that order, in the Supabase SQL editor (or `supabase db push`).
+3. In **Authentication → Providers → Email**, confirm "Confirm email" is on. In **Authentication → URL Configuration**, add `http://localhost:3000/auth/callback` as a redirect URL.
+
+```bash
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). The dev server runs a custom Node process (`server.mjs`) that hosts Next.js **and** the Socket.IO multiplayer layer together on the same port, so nothing else needs to run separately.
+Open [http://localhost:3000](http://localhost:3000). The dev server runs a custom Node process (`server.mjs`) that hosts Next.js **and** the Socket.IO multiplayer layer together on the same port, so nothing else needs to run separately. `proxy.ts` refreshes the Supabase session on almost every route, which is why step 1 above is required even just to browse the demo museum.
 
 To see multiplayer in action: open `/museum/demo-artist` in two browser windows side by side. Each window spawns a separate avatar; moving in one updates the other in real time.
 
@@ -54,7 +63,7 @@ The museum itself is five connected rooms, each with its own warm theme (Warm Cr
 **Core experience.** Land on a branded marketing page → preview the demo artist and their museum → optionally customize an avatar → walk into a 3D gallery, or browse the same collection as an accessible grid → focus on individual pieces with full metadata and sequential navigation → see other visitors present in the same room.
 
 **Key design decisions.**
-- *One account type, no auth.* Anyone can create a museum at `/create` and get a shareable link, but there's no registration or login gating it -- a lightweight local guest identity (stored in `localStorage`) stands in for a real account, and created museums live in a file rather than a real database (see "Not implemented" below). That kept the prototype focused on the interaction and spatial-design problem rather than backend plumbing, while still proving the full create → share → visit loop works.
+- *Real creator accounts, still-anonymous visitors.* Creating a museum at `/create` requires a Supabase Auth account (email/password, with email confirmation); museums are owned by that account and persisted in Postgres with Row Level Security enforcing "only the owner can edit or delete their museum" at the database layer, not just in application code (see "Accounts, ownership, and museum visibility" below). Visiting a museum never requires an account -- every visitor, including a signed-in creator walking their own gallery, still gets a lightweight guest identity (stored in `localStorage`) for multiplayer presence, exactly as before. The two identity systems are deliberately kept separate.
 - *Intentional interaction over ambient triggers.* Artwork opens on a deliberate action ("Press E to view" / click / Enter) rather than automatically when a visitor walks near a piece, so browsing feels calm rather than twitchy.
 - *Grid view is a first-class mode, not an afterthought.* The exact same artwork data renders as an accessible 2D grid, reachable from the museum's Controls panel or directly at `/artist/[username]#grid`, so the 3D room is an enhancement, never a requirement.
 - *Camera-relative movement, not tank controls.* WASD moves relative to where the camera is looking (and the avatar turns to face its movement direction), which reads as more natural for a cozy/social space than classic rotate-in-place controls.
@@ -64,7 +73,7 @@ The museum itself is five connected rooms, each with its own warm theme (Warm Cr
 
 **Technical implementation.** See "Architecture" and "Multiplayer architecture" below.
 
-**Current prototype scope.** One hand-designed five-room demo museum, plus a working "create your own" flow for user-uploaded museums backed by a local file rather than a real database, and no accounts/auth. This is intentional -- see "Not implemented" for the full list and why.
+**Current prototype scope.** One hand-designed five-room demo museum, plus a working "create your own" flow for user-uploaded museums, backed by real Supabase accounts and a Postgres database with Row Level Security enforcing ownership. Artwork images still live as base64 data URLs inside the museum row rather than in real object storage, and there's no visual editor for a museum after it's created. This is intentional -- see "Not implemented" for the full list and why.
 
 **Future vision.** See "Future product vision" at the end of this document.
 
@@ -78,14 +87,20 @@ The museum itself is five connected rooms, each with its own warm theme (Warm Cr
 app/
   page.tsx                    Landing page
   avatar/page.tsx             Avatar editor
-  create/page.tsx             "Create My Museum" upload form
+  create/page.tsx             "Create My Museum" upload form (auth-gated)
+  dashboard/page.tsx          "My Museums" -- signed-in creator's own museums
+  sign-up/page.tsx            Create a creator account
+  sign-in/page.tsx            Sign in
+  auth/actions.ts             Server Actions: signUp, signIn, signOut
+  auth/callback/route.ts      Exchanges the email-confirmation code for a session
   artist/[username]/page.tsx  Artist profile + museum preview + share
   museum/[museumId]/page.tsx  Live 3D museum route (demo or user-created)
-  api/museums/route.ts        POST: create a museum from uploaded artwork
+  api/museums/route.ts        POST: create a museum from uploaded artwork (auth-gated)
   not-found.tsx, */error.tsx, */loading.tsx
 
 components/
   ui/            Button, Logo, SiteHeader/Footer, SkipLink, ErrorBoundary
+  auth/          SignUpForm, SignInForm, AuthStatus (header sign-in/log-out slot)
   landing/       Hero, HowItWorks, FeaturedArtist (+ 3D preview loaders)
   profile/       Profile-page-only pieces (avatar bust, live visitor badge)
   avatar/        AvatarModel (3D), AvatarEditor, OptionGroup, preview canvas
@@ -106,12 +121,15 @@ game/            Framework-agnostic game logic, no JSX
 hooks/           useAvatarConfig, useVisitorIdentity, useMultiplayer,
                  useLocalStorageState, usePrefersReducedMotion, ...
 data/            Demo artist, demo museum, demo rooms, demo artwork (hardcoded)
-server/          museumStore.ts -- file-backed store for user-created museums
+lib/supabase/    Browser/server Supabase clients + the Proxy session-refresh helper
+server/          museumsRepository.ts -- Postgres-backed store for user-created museums
+supabase/migrations/  SQL migrations (schema + Row Level Security policies)
 types/           Artwork, AvatarConfiguration, Player, Museum, GalleryRoom
 public/artwork/  Generated placeholder artwork (see below)
 scripts/         generate-placeholder-artwork.mjs
 server.mjs       Custom server: Next.js + Socket.IO in one process
-proxy.ts         Returns a real 404 for unknown museum/artist slugs
+proxy.ts         Refreshes the Supabase session and returns a real 404 for
+                 unknown/inaccessible museum or artist slugs
 ```
 
 Game logic (movement math, camera math, collision, proximity) is written as plain functions in `game/` with no React or Three.js scene-graph dependency beyond `THREE.Vector3` math, and is unit-testable in isolation. The React/R3F components in `components/museum` and `components/avatar` are the only things that call `useFrame` and mutate the scene graph -- they're the glue, not the logic.
@@ -144,7 +162,23 @@ The **demo museum** (`data/rooms.ts`, `data/museum.ts`) is a hand-designed floor
 
 **Creating your own museum** (`/create`) is a real MVP, not a mock: upload a few images, give each a title/artist/description, pick one of the five gallery themes, and submit. Images are resized and re-encoded to JPEG client-side (`components/create/CreateMuseumForm.tsx`, via `createImageBitmap` + canvas) before upload, capping payload size. The server (`app/api/museums/route.ts`) validates the request, auto-generates a single well-proportioned room sized to the artwork count (`game/museum/autoLayout.ts`, reusing the same wall-placement math the demo museum's data was authored with -- `game/museum/placement.ts`), and saves it. The resulting museum is played through the exact same `MuseumExperience` component as the demo -- multiplayer, artwork interaction, and the accessible grid all work identically.
 
-There's no database: `server/museumStore.ts` is a small JSON file on disk (`.mymuseum-data/`, gitignored). An initial version used an in-memory `Map`, which turned out not to work -- Next.js compiles the `/api/museums` route, `proxy.ts`, and the `/museum/[id]` page into separate server bundles that don't reliably share module-level state at runtime even within one process, so a museum created via the API was invisible to the page meant to render it. A file survives that; it's an intentionally lightweight stand-in for a real database, matching this prototype's scope, not a claim of production readiness.
+Museums are persisted in a real Postgres database (Supabase), owned by the authenticated creator who made them, not a JSON file on disk -- see "Accounts, ownership, and museum visibility" below for the full data model and why. (An earlier iteration of this prototype used a file-backed store and, before that, an in-memory `Map`; the `Map` didn't work because Next.js compiles the `/api/museums` route, `proxy.ts`, and the `/museum/[id]` page into separate server bundles that don't reliably share module-level state at runtime even within one process, so a museum created via the API was invisible to the page meant to render it. A real database sidesteps that entirely.)
+
+---
+
+## Accounts, ownership, and museum visibility
+
+**Chosen: Supabase Auth + Postgres + Row Level Security**, kept deliberately separate from the guest visitor identity described in "Multiplayer architecture" above.
+
+- **Creator accounts.** `/sign-up` and `/sign-in` use Supabase Auth (email + password, with email confirmation required before first login). A `profiles` row is auto-provisioned for every new account via a Postgres trigger (`supabase/migrations/0001_init.sql`) -- sign-up stays a single email+password step, with a unique username/display name generated automatically rather than asked for up front.
+- **Museum ownership is enforced by the database, not application code.** Every museum row in the `museums` table has an `owner_id` referencing `auth.users`. Row Level Security policies mean Postgres itself rejects an insert/update/delete that doesn't belong to the requesting user's own session -- there is no code path in this app that can write a museum on another user's behalf, even by mistake, because every write goes through a Supabase client scoped to the current user's own JWT (`lib/supabase/server.ts`), never a service-role/admin key.
+- **Museum visibility.** Each museum has an `is_published` column (`supabase/migrations/0002_museum_visibility.sql`), defaulting to `true` so the current `/create` flow -- which has no publish/draft control yet -- keeps producing museums that are publicly viewable by a direct URL, no login required, exactly as before. The read policy is `is_published = true OR owner_id = auth.uid()`: a published museum is visible to anyone (including anonymous visitors); a museum with `is_published = false` is visible only to its owner. Because this is enforced in Postgres, `getMuseumById`/`hasMuseum` (`server/museumsRepository.ts`) need no visibility-specific logic of their own -- a private museum requested by anyone but its owner simply comes back as "doesn't exist," identical to an unknown slug, both on the museum page and in `proxy.ts`'s existence check.
+- **The dashboard (`/dashboard`)** lists only the signed-in creator's own museums (published or not), derived from `getCurrentUser()`'s server-verified session -- never from a client-supplied id -- and filtered by that id in the query. RLS's read policy is intentionally public for *published* museums, so this filter, not RLS, is what keeps one user's dashboard from listing another user's museums; RLS is what keeps anyone from *writing* to a museum they don't own.
+- **Visitors never need an account.** Every visitor -- including a signed-in creator walking through their own or someone else's museum -- still gets a `localStorage` guest identity for multiplayer presence (`useVisitorIdentity.ts`, unchanged). Supabase session cookies and the guest identity are two independent systems that never reference each other; `server.mjs`'s Socket.IO layer has no knowledge of Supabase at all.
+- **Proxy (`proxy.ts`) now runs on almost every route**, not just `/museum/*` and `/artist/*`, so the Supabase session cookie stays refreshed everywhere (needed for `/create` and `/dashboard`'s sign-in gates and the header's logged-in state). This is a real, measurable cost versus the original file-backed prototype -- every page load now does a small amount of cookie/session work, and the app has an external dependency (Supabase reachability) it didn't have before. `next/headers`'s `cookies()` (used by the request-scoped Supabase client) does correctly reflect the real visitor's session when called from Proxy in this Next.js version, which is what lets an owner's own session be recognized even during the pre-render existence check for a private museum.
+- **Not yet built:** a publish/unpublish toggle anywhere in the UI (the `is_published` column exists and is enforced, but nothing sets it to `false` except direct SQL), and any museum-editing UI at all -- both are explicitly deferred, see "Not implemented" below.
+
+**Environment variables required:** `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` (see `.env.example`). No service-role key is used anywhere in this app -- every database operation is subject to RLS under the requesting user's own session.
 
 ---
 
@@ -176,8 +210,8 @@ The 3D museum is desktop-first (keyboard + mouse-drag controls) but every other 
 
 This build was checked with, not just written to satisfy:
 
-- `npm run typecheck` and `npm run lint` -- both pass with zero errors (a few informational `<img>`-vs-`next/image` warnings remain, intentional: see `components/artwork/ArtworkGrid.tsx`).
-- `npm run build` -- clean production build, all four routes compile (two static, two dynamic).
+- `npm run typecheck` -- passes with zero errors. `npm run lint` -- one pre-existing, unrelated error (`components/landing/Hero.tsx`, an unescaped apostrophe) plus the same informational `<img>`-vs-`next/image` warnings as before (intentional: see `components/artwork/ArtworkGrid.tsx`); neither predates nor was introduced by the Supabase migration work below.
+- `npm run build` -- clean production build, all routes compile.
 - A live two-socket-client script joined the same museum room and confirmed: `welcome` roster payload, `player:joined` broadcast, throttled `player:update` relay, `player:left` on disconnect, and correct `visitor:count` increment/decrement.
 - A second script confirmed two different `museumId`s never see each other's players (room isolation).
 - A Playwright pass loaded the landing page, artist profile, avatar editor, and live museum route and confirmed zero console/page errors on each.
@@ -186,7 +220,15 @@ This build was checked with, not just written to satisfy:
 - Direct `curl` checks confirmed real HTTP 404s for unknown `/museum/:id` and `/artist/:username` slugs (see `proxy.ts` -- this Next.js version can't change a streamed response's status code after the body starts, so unknown slugs are rejected in Proxy, before rendering, rather than via `notFound()` inside the page).
 - The full "create your own museum" flow was run end to end with Playwright: upload two real raster images, fill in the form, submit, follow the generated link, and confirm the new museum renders with zero console errors and correct multiplayer join.
 
-What this does **not** claim: no user research, no usability testing sessions, and no analytics were run. There are no invented metrics anywhere in this repo.
+**Accounts, ownership, and visibility (Supabase migration) -- verified separately, and by different means than the Playwright passes above:**
+
+- End-to-end manually: signed up, confirmed a real account by email, signed in, created two museums, confirmed both persisted across logout/login and appeared on `/dashboard`.
+- `curl`, unauthenticated: a published museum and the demo museum both return `200`; a museum with `is_published = false` returns a real `404`; `/dashboard` returns a sign-in prompt, not museum data.
+- Queried Postgres directly (anon key) to confirm a private museum is absent from an anonymous read and absent from a query filtered by a different owner's id, and present when filtered by its real owner's id -- validating the exact query shape `server/museumsRepository.ts` uses, independent of the app.
+- Manually confirmed, signed in as the owner: a private (`is_published = false`) museum opens normally; signed out, the same URL 404s.
+- Read Next.js's Proxy implementation directly (`node_modules/next/dist/esm/server/web/adapter.js`) to confirm `next/headers`'s `cookies()` -- used by the request-scoped Supabase client inside `proxy.ts` -- is backed by the real incoming request's cookies when called from Proxy in this Next.js version, since this isn't explicitly documented and was worth confirming rather than assuming.
+
+What this does **not** claim: no automated (Playwright) coverage of the auth/dashboard/visibility flows yet, no test with two separate real signed-in accounts confirming cross-user isolation through the browser (validated at the query/RLS level instead, per above), no user research, no usability testing sessions, and no analytics were run. There are no invented metrics anywhere in this repo.
 
 ---
 
@@ -196,19 +238,22 @@ The app is one Node process (`server.mjs`) serving both Next.js and Socket.IO, s
 
 **Recommended:** Render, Railway, Fly.io, or any VPS/Docker host.
 
+0. Run both `supabase/migrations/*.sql` files, in order, against the target Supabase project (a separate project from local dev, unless you're deliberately sharing one), and set the redirect URL in **Authentication → URL Configuration** to `https://<your-domain>/auth/callback`.
 1. `npm run build`
 2. Start command: `npm run start` (runs `node server.mjs` with `NODE_ENV=production`)
 3. Expose the port from `process.env.PORT` (defaults to `3000`)
 
-**Environment variables** (all optional):
+**Environment variables:**
 
-| Variable | Purpose | Default |
-| --- | --- | --- |
-| `PORT` | HTTP port the custom server listens on | `3000` |
-| `CLIENT_ORIGIN` | CORS origin allowed to connect via Socket.IO | `*` |
-| `NEXT_PUBLIC_SOCKET_URL` | Only needed if the realtime server is deployed **separately** from the Next.js frontend | same-origin |
+| Variable | Purpose | Required | Default |
+| --- | --- | --- | --- |
+| `NEXT_PUBLIC_SUPABASE_URL` | Supabase project URL (creator accounts + museum database) | Yes | -- |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Supabase anon/public key -- safe to expose; Row Level Security is the actual access control, not key secrecy | Yes | -- |
+| `PORT` | HTTP port the custom server listens on | No | `3000` |
+| `CLIENT_ORIGIN` | CORS origin allowed to connect via Socket.IO | No | `*` |
+| `NEXT_PUBLIC_SOCKET_URL` | Only needed if the realtime server is deployed **separately** from the Next.js frontend | No | same-origin |
 
-No secrets are required or committed. If you split the frontend (e.g. static hosting) from the realtime server, set `NEXT_PUBLIC_SOCKET_URL` on the frontend build and `CLIENT_ORIGIN` on the server so CORS allows it.
+No service-role/admin Supabase key is used anywhere in this app. If you split the frontend (e.g. static hosting) from the realtime server, set `NEXT_PUBLIC_SOCKET_URL` on the frontend build and `CLIENT_ORIGIN` on the server so CORS allows it.
 
 **Vercel note:** the Next.js pages/routes themselves are compatible with Vercel, but Vercel's serverless functions can't host the long-lived Socket.IO server this app depends on for multiplayer. Deploying there would need the realtime layer split out to a separately-hosted Socket.IO service (or swapped for a managed realtime product like PartyKit), reachable via `NEXT_PUBLIC_SOCKET_URL`.
 
@@ -233,11 +278,11 @@ See [`case-study-assets/README.md`](./case-study-assets/) for a shot list and ca
 ## Product scope
 
 ### Implemented
-Branded landing page · demo artist profile · museum preview/share page · shareable `/museum/[id]` route · a five-room hand-designed museum with per-room themes, auto-placed furnishings, and varied frame sizes · third-person movement with camera-relative controls and multi-room wall/doorway collision · original stylized avatar with idle/walk animation and a tapered, jointed arm chain · avatar editor (skin tone, 3 hairstyles, hair color, top, bottom, shoes, accessory, `localStorage`-persisted, live 3D preview) · artwork interaction prompts with a dedicated trigger key · focused artwork view with looping previous/next and position indicator · accessible non-3D artwork grid · live multiplayer avatars with join/leave/interpolation/throttling, session-based reconnect dedup, and per-museum room isolation · visitor count and presence panel · a full "create your own museum" upload flow (image compression, theme picker, auto-generated single-room layout, shareable link) with a lightweight file-backed store · loading/error/not-found states on every dynamic route · responsive layouts for every non-3D screen · accessibility fundamentals (focus trap, keyboard operability, reduced motion, alt text) · deployment configuration and docs.
+Branded landing page · demo artist profile · museum preview/share page · shareable `/museum/[id]` route · a five-room hand-designed museum with per-room themes, auto-placed furnishings, and varied frame sizes · third-person movement with camera-relative controls and multi-room wall/doorway collision · original stylized avatar with idle/walk animation and a tapered, jointed arm chain · avatar editor (skin tone, 3 hairstyles, hair color, top, bottom, shoes, accessory, `localStorage`-persisted, live 3D preview) · artwork interaction prompts with a dedicated trigger key · focused artwork view with looping previous/next and position indicator · accessible non-3D artwork grid · live multiplayer avatars with join/leave/interpolation/throttling, session-based reconnect dedup, and per-museum room isolation · visitor count and presence panel · a full "create your own museum" upload flow (image compression, theme picker, auto-generated single-room layout, shareable link) · real creator accounts (Supabase Auth, email confirmation, persistent sessions) · Postgres-backed museum storage with Row Level Security enforcing per-owner create/update/delete and published-or-owner-only read · a `/dashboard` listing a signed-in creator's own museums · per-museum publish/draft visibility (`is_published`, enforced at the database layer, not just in application code) · loading/error/not-found states on every dynamic route · responsive layouts for every non-3D screen · accessibility fundamentals (focus trap, keyboard operability, reduced motion, alt text) · deployment configuration and docs.
 
 ### Not implemented (by design, for this prototype)
-Full registration/password auth · a production database (museums created via `/create` are saved to a local JSON file, not a real DB -- see "Museum floor plans and user-created museums" above) · drag-and-drop gallery editing or a visual room editor · multiple room-shape templates (custom museums get one auto-sized room, not the demo's five-room layout) · likes/comments/following/messaging/voice chat · payments or art sales · a moderation system · events · multiple floors · a custom architecture/furniture editor · VR · analytics dashboards. These are all real product directions -- see below -- deliberately deferred so this prototype could go deep on the spatial-portfolio interaction instead of wide on account/backend features.
+A production image store (artwork is still embedded as base64 inside the museum row -- see "Accounts, ownership, and museum visibility" above -- rather than real object storage) · any UI to edit a museum after it's created, including a publish/unpublish toggle (the `is_published` flag exists and is enforced by RLS, but nothing in the UI sets it yet) · drag-and-drop gallery editing or a visual room editor · multiple room-shape templates (custom museums get one auto-sized room, not the demo's five-room layout) · likes/comments/following/messaging/voice chat · payments or art sales · a moderation system · events · multiple floors · a custom architecture/furniture editor · VR · analytics/usage tracking. These are all real product directions -- see below -- deliberately deferred so this work could go deep on accounts/ownership/data first, matching this repo's own phased approach.
 
 ## Future product vision
 
-If this moved past prototype: real accounts and museum ownership tied to `/create` museums (so they survive more than one server's lifetime, with a real database instead of a JSON file); multiple room-shape templates and simple architectural customization for user-created museums, not just the auto-sized single room; drag-and-drop rearrangement of artwork on the walls; a "you were here" visit history for artists to see who's stopped by; light social features (following an artist, a comment left in a guestbook-style panel rather than inline chat); and eventually multiple rooms/floors per user museum as a portfolio grows, matching what the demo museum already shows is possible. Not committed to VR, but the avatar and room system were designed so a future VR mode wouldn't require starting over.
+If this moved past prototype: a UI for editing a museum after creation, including a publish/unpublish control building on the `is_published` column that already exists; multiple room-shape templates and simple architectural customization for user-created museums, not just the auto-sized single room; drag-and-drop rearrangement of artwork on the walls; real object storage for artwork images instead of base64-in-Postgres; usage analytics; a "you were here" visit history for artists to see who's stopped by; light social features (following an artist, a comment left in a guestbook-style panel rather than inline chat); and eventually multiple rooms/floors per user museum as a portfolio grows, matching what the demo museum already shows is possible. Not committed to VR, but the avatar and room system were designed so a future VR mode wouldn't require starting over.

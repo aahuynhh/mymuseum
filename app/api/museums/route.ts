@@ -1,8 +1,9 @@
 import { NextResponse } from "next/server";
 import { GALLERY_THEMES, type GalleryThemeId } from "@/game/museum/themes";
 import { generateSingleRoomMuseum, type UploadedArtworkInput } from "@/game/museum/autoLayout";
-import { hasStoredMuseum, saveMuseum } from "@/server/museumStore";
+import { hasMuseum, createMuseum } from "@/server/museumsRepository";
 import { DEMO_MUSEUM_ID } from "@/data/museum";
+import { getCurrentUser } from "@/lib/supabase/server";
 
 const MAX_ARTWORKS = 10;
 const MAX_IMAGE_DATA_URL_LENGTH = 2_000_000; // ~1.5MB image, base64-inflated
@@ -46,6 +47,14 @@ interface ArtworkPayload {
 }
 
 export async function POST(request: Request) {
+  const user = await getCurrentUser();
+  if (!user) {
+    return NextResponse.json(
+      { error: "Sign in to create a museum." },
+      { status: 401 }
+    );
+  }
+
   let body: unknown;
   try {
     body = await request.json();
@@ -128,20 +137,27 @@ export async function POST(request: Request) {
 
   let museumId = slugify(name) || "museum";
   if (museumId === DEMO_MUSEUM_ID) museumId = `${museumId}-museum`;
-  while (hasStoredMuseum(museumId)) {
+  while (await hasMuseum(museumId)) {
     museumId = `${slugify(name) || "museum"}-${randomSuffix()}`;
   }
 
   const museum = generateSingleRoomMuseum({
     id: museumId,
-    ownerId: museumId,
+    ownerId: user.id,
     name,
     description: description || "A personal collection.",
     theme,
     artworks,
   });
 
-  saveMuseum(museum);
+  try {
+    await createMuseum(museum);
+  } catch {
+    return NextResponse.json(
+      { error: "Couldn't save your museum. Please try again." },
+      { status: 500 }
+    );
+  }
 
   return NextResponse.json({ museumId }, { status: 201 });
 }

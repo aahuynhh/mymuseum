@@ -2,12 +2,12 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { DEMO_MUSEUM, DEMO_MUSEUM_ID } from "@/data/museum";
 import { DEMO_ARTIST } from "@/data/demoArtist";
-import { getStoredMuseum } from "@/server/museumStore";
+import { getMuseumById } from "@/server/museumsRepository";
 import { MuseumExperienceLoader } from "@/components/museum/MuseumExperienceLoader";
 
-function getMuseum(museumId: string) {
+async function getMuseum(museumId: string) {
   if (museumId === DEMO_MUSEUM_ID) return DEMO_MUSEUM;
-  return getStoredMuseum(museumId) ?? null;
+  return getMuseumById(museumId);
 }
 
 export async function generateMetadata({
@@ -16,7 +16,7 @@ export async function generateMetadata({
   params: Promise<{ museumId: string }>;
 }): Promise<Metadata> {
   const { museumId } = await params;
-  const museum = getMuseum(museumId);
+  const museum = await getMuseum(museumId);
   if (!museum) return { title: "Museum not found" };
 
   return {
@@ -32,7 +32,7 @@ export default async function MuseumPage({
   params: Promise<{ museumId: string }>;
 }) {
   const { museumId } = await params;
-  const museum = getMuseum(museumId);
+  const museum = await getMuseum(museumId);
   if (!museum) notFound();
 
   const exitHref = museumId === DEMO_MUSEUM_ID ? `/artist/${DEMO_ARTIST.username}` : "/";

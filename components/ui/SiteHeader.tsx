@@ -5,9 +5,10 @@ import { motion } from "framer-motion";
 import { Logo } from "./Logo";
 import { LinkButton } from "./Button";
 import { DEMO_ARTIST } from "@/data/demoArtist";
+import { AuthStatus } from "@/components/auth/AuthStatus";
 import { cn } from "@/utils/cn";
 
-const navLinkClass =
+export const navLinkClass =
   "relative text-sm font-medium text-ink-muted transition-colors duration-200 hover:text-ink after:absolute after:inset-x-0 after:-bottom-1.5 after:h-px after:origin-left after:scale-x-0 after:bg-terracotta after:transition-transform after:duration-300 after:ease-out hover:after:scale-x-100";
 
 const EASE_OUT_SOFT = [0.16, 1, 0.3, 1] as const;
@@ -49,6 +50,7 @@ export function SiteHeader({ heroIntro = false }: { heroIntro?: boolean }) {
           <Link href="/create" className={navLinkClass}>
             Create My Museum
           </Link>
+          <AuthStatus linkClassName={navLinkClass} />
         </nav>
         <LinkButton href="/museum/demo-artist" size="md">
           Enter museum
