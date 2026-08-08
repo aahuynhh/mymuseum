@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { cn } from "@/utils/cn";
 import { CopyLinkButton } from "@/components/museum/CopyLinkButton";
+import { LockIcon, UnlockIcon } from "@/components/ui/PublishBadge";
 
 type SaveState = "idle" | "saving" | "error";
 
@@ -65,7 +66,16 @@ export function PublishToggle({
   }
 
   return (
-    <div className="flex flex-col gap-5">
+    // The card's own accent (left edge + faint tint) reflects the live,
+    // optimistically-updated `isPublished` state rather than the initial
+    // server-rendered value, so flipping the toggle updates this section's
+    // status treatment immediately instead of waiting on router.refresh().
+    <section
+      className={cn(
+        "flex flex-col gap-5 rounded-[1.75rem] border border-l-4 p-6 shadow-warm-sm transition-colors duration-200 sm:p-8",
+        isPublished ? "border-border/70 border-l-sage bg-sage/5" : "border-border/70 border-l-border bg-surface"
+      )}
+    >
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
           <h2 className="font-display text-xl text-ink">Visibility</h2>
@@ -74,7 +84,7 @@ export function PublishToggle({
               ? "Published -- anyone with the link can visit."
               : "Private -- only you can see this museum."}
           </p>
-          {error && <p className="mt-1 text-xs text-terracotta-dark">{error}</p>}
+          {error && <p className="mt-1 text-xs text-dusty-red-dark">{error}</p>}
         </div>
         <button
           type="button"
@@ -89,11 +99,14 @@ export function PublishToggle({
           )}
         >
           <span
+            aria-hidden="true"
             className={cn(
-              "absolute top-1 h-6 w-6 rounded-full bg-surface shadow-warm-xs transition-transform duration-200 ease-out",
-              isPublished ? "translate-x-7" : "translate-x-1"
+              "absolute top-1 flex h-6 w-6 items-center justify-center rounded-full bg-surface shadow-warm-xs transition-transform duration-200 ease-out",
+              isPublished ? "translate-x-7 text-sage-dark" : "translate-x-1 text-ink-muted"
             )}
-          />
+          >
+            {isPublished ? <UnlockIcon /> : <LockIcon />}
+          </span>
         </button>
       </div>
       <div className="flex flex-wrap items-center gap-3 border-t border-border/70 pt-5">
@@ -102,6 +115,6 @@ export function PublishToggle({
         </code>
         <CopyLinkButton path={path} isPrivate={!isPublished} />
       </div>
-    </div>
+    </section>
   );
 }

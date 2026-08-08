@@ -4,7 +4,8 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { GALLERY_THEME_LIST, type GalleryThemeId } from "@/game/museum/themes";
 import { OptionGroup } from "@/components/avatar/OptionGroup";
-import { Button } from "@/components/ui/Button";
+import { TextField, TextAreaField } from "@/components/ui/Field";
+import { SaveStatus, type SaveStatusState } from "@/components/ui/SaveStatus";
 
 type SaveState = "idle" | "saving" | "success" | "error";
 
@@ -60,28 +61,28 @@ export function EditMuseumMetadataForm({
     }
   }
 
+  // The success message should disappear the moment the user edits again,
+  // even though `state` itself isn't reset until the next save -- SaveStatus
+  // is purely presentational, so that "is this still valid" judgment stays
+  // here in the owning form.
+  const displayState: SaveStatusState = state === "success" && isDirty ? "idle" : state;
+
   return (
     <section className="flex flex-col gap-5 rounded-[1.75rem] border border-border/70 bg-surface p-6 shadow-warm-sm sm:p-8">
       <h2 className="font-display text-xl text-ink">About your museum</h2>
-      <label className="flex flex-col gap-1.5 text-sm">
-        <span className="font-medium text-ink">Museum name</span>
-        <input
-          type="text"
-          required
-          value={name}
-          onChange={(e) => setName(e.target.value)}
-          className="rounded-lg border border-border bg-canvas px-3 py-2.5 text-ink outline-none focus-visible:border-terracotta"
-        />
-      </label>
-      <label className="flex flex-col gap-1.5 text-sm">
-        <span className="font-medium text-ink">Description</span>
-        <textarea
-          value={description}
-          onChange={(e) => setDescription(e.target.value)}
-          rows={2}
-          className="resize-none rounded-lg border border-border bg-canvas px-3 py-2.5 text-ink outline-none focus-visible:border-terracotta"
-        />
-      </label>
+      <TextField
+        label="Museum name"
+        type="text"
+        required
+        value={name}
+        onChange={(e) => setName(e.target.value)}
+      />
+      <TextAreaField
+        label="Description"
+        value={description}
+        onChange={(e) => setDescription(e.target.value)}
+        rows={2}
+      />
       <OptionGroup
         legend="Gallery theme"
         name="theme"
@@ -89,17 +90,14 @@ export function EditMuseumMetadataForm({
         value={theme}
         onChange={setTheme}
       />
-      <div className="flex flex-wrap items-center gap-3 border-t border-border/70 pt-5">
-        <Button type="button" onClick={handleSave} disabled={!isDirty || state === "saving"}>
-          {state === "saving" ? "Saving…" : "Save changes"}
-        </Button>
-        {state === "success" && !isDirty && <p className="text-sm text-sage-dark">Saved.</p>}
-        {error && (
-          <p role="alert" className="text-sm font-medium text-terracotta-dark">
-            {error}
-          </p>
-        )}
-      </div>
+      <SaveStatus
+        className="border-t border-border/70 pt-5"
+        state={displayState}
+        onSave={handleSave}
+        disabled={!isDirty}
+        idleLabel="Save changes"
+        errorMessage={error}
+      />
     </section>
   );
 }

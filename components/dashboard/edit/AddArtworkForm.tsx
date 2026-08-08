@@ -4,7 +4,8 @@ import { useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { compressImage } from "@/lib/artwork/clientCompress";
 import { MAX_ARTWORKS_PER_MUSEUM } from "@/lib/artwork/limits";
-import { Button } from "@/components/ui/Button";
+import { TextField, TextAreaField } from "@/components/ui/Field";
+import { SaveStatus } from "@/components/ui/SaveStatus";
 
 type SubmitState = "idle" | "uploading" | "error";
 
@@ -15,6 +16,7 @@ type SubmitState = "idle" | "uploading" | "error";
  * uploads, inserts, and triggers a full relayout server-side. */
 export function AddArtworkForm({ museumId, currentCount }: { museumId: string; currentCount: number }) {
   const router = useRouter();
+  const formRef = useRef<HTMLFormElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [title, setTitle] = useState("");
   const [artist, setArtist] = useState("");
@@ -81,6 +83,7 @@ export function AddArtworkForm({ museumId, currentCount }: { museumId: string; c
 
   return (
     <form
+      ref={formRef}
       onSubmit={handleSubmit}
       className="flex flex-col gap-5 rounded-[1.75rem] border border-dashed border-border bg-canvas-deep/40 p-6 sm:p-8"
     >
@@ -117,67 +120,28 @@ export function AddArtworkForm({ museumId, currentCount }: { museumId: string; c
           </div>
 
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <label className="flex flex-col gap-1 text-sm">
-              <span className="font-medium text-ink">Title</span>
-              <input
-                type="text"
-                required
-                value={title}
-                onChange={(e) => setTitle(e.target.value)}
-                className="rounded-lg border border-border bg-canvas px-3 py-2 text-sm text-ink outline-none focus-visible:border-terracotta"
-              />
-            </label>
-            <label className="flex flex-col gap-1 text-sm">
-              <span className="font-medium text-ink">Artist</span>
-              <input
-                type="text"
-                required
-                value={artist}
-                onChange={(e) => setArtist(e.target.value)}
-                className="rounded-lg border border-border bg-canvas px-3 py-2 text-sm text-ink outline-none focus-visible:border-terracotta"
-              />
-            </label>
-            <label className="flex flex-col gap-1 text-sm">
-              <span className="font-medium text-ink">Medium</span>
-              <input
-                type="text"
-                value={medium}
-                onChange={(e) => setMedium(e.target.value)}
-                className="rounded-lg border border-border bg-canvas px-3 py-2 text-sm text-ink outline-none focus-visible:border-terracotta"
-              />
-            </label>
-            <label className="flex flex-col gap-1 text-sm">
-              <span className="font-medium text-ink">Year</span>
-              <input
-                type="number"
-                value={year}
-                onChange={(e) => setYear(e.target.value)}
-                className="rounded-lg border border-border bg-canvas px-3 py-2 text-sm text-ink outline-none focus-visible:border-terracotta"
-              />
-            </label>
+            <TextField compact label="Title" type="text" required value={title} onChange={(e) => setTitle(e.target.value)} />
+            <TextField compact label="Artist" type="text" required value={artist} onChange={(e) => setArtist(e.target.value)} />
+            <TextField compact label="Medium" type="text" value={medium} onChange={(e) => setMedium(e.target.value)} />
+            <TextField compact label="Year" type="number" value={year} onChange={(e) => setYear(e.target.value)} />
           </div>
-          <label className="flex flex-col gap-1 text-sm">
-            <span className="font-medium text-ink">
-              Description <span className="font-normal text-ink-muted">(also used as alt text)</span>
-            </span>
-            <textarea
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              rows={2}
-              className="resize-none rounded-lg border border-border bg-canvas px-3 py-2 text-sm text-ink outline-none focus-visible:border-terracotta"
-            />
-          </label>
+          <TextAreaField
+            compact
+            label="Description"
+            hint="(also used as alt text)"
+            value={description}
+            onChange={(e) => setDescription(e.target.value)}
+            rows={2}
+          />
 
-          <div className="flex flex-wrap items-center gap-3">
-            <Button type="submit" disabled={!canSubmit || state === "uploading"}>
-              {state === "uploading" ? "Adding…" : "Add artwork"}
-            </Button>
-            {error && (
-              <p role="alert" className="text-sm font-medium text-terracotta-dark">
-                {error}
-              </p>
-            )}
-          </div>
+          <SaveStatus
+            state={state === "uploading" ? "saving" : state}
+            onSave={() => formRef.current?.requestSubmit()}
+            disabled={!canSubmit}
+            idleLabel="Add artwork"
+            savingLabel="Adding…"
+            errorMessage={error}
+          />
         </>
       )}
     </form>

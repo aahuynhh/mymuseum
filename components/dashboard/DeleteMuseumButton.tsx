@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { Button } from "@/components/ui/Button";
+import { ConfirmInline } from "@/components/ui/ConfirmInline";
 
 type DeleteState = "idle" | "confirming" | "deleting" | "error";
 
@@ -35,40 +35,20 @@ export function DeleteMuseumButton({ museumId, museumName }: { museumId: string;
     }
   }
 
-  if (state === "confirming" || state === "deleting") {
-    return (
-      <div className="flex flex-col items-end gap-2">
-        <p className="text-xs text-ink-muted">
-          Delete &ldquo;{museumName}&rdquo;? This can&apos;t be undone.
-        </p>
-        <div className="flex gap-2">
-          <Button
-            type="button"
-            variant="ghost"
-            size="md"
-            onClick={() => setState("idle")}
-            disabled={state === "deleting"}
-          >
-            Cancel
-          </Button>
-          <Button type="button" variant="secondary" size="md" onClick={handleDelete} disabled={state === "deleting"}>
-            {state === "deleting" ? "Deleting…" : "Confirm delete"}
-          </Button>
-        </div>
-      </div>
-    );
-  }
-
   return (
     <div className="flex flex-col items-end gap-1">
-      <button
-        type="button"
-        onClick={() => setState("confirming")}
-        className="text-xs font-medium text-ink-muted underline-offset-2 transition-colors hover:text-terracotta-dark hover:underline"
-      >
-        Delete museum
-      </button>
-      {error && <p className="text-xs text-terracotta-dark">{error}</p>}
+      <ConfirmInline
+        triggerLabel="Delete museum"
+        confirming={state === "confirming" || state === "deleting"}
+        busy={state === "deleting"}
+        onRequestConfirm={() => setState("confirming")}
+        onCancel={() => setState("idle")}
+        onConfirm={handleDelete}
+        confirmPrompt={`Delete "${museumName}"? This can't be undone.`}
+        confirmLabel="Confirm delete"
+        confirmingLabel="Deleting…"
+      />
+      {error && <p className="text-xs text-dusty-red-dark">{error}</p>}
     </div>
   );
 }

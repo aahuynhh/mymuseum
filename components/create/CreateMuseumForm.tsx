@@ -5,12 +5,116 @@ import { GALLERY_THEME_LIST, type GalleryThemeId } from "@/game/museum/themes";
 import { MAX_ARTWORKS_PER_MUSEUM } from "@/lib/artwork/limits";
 import { compressImage } from "@/lib/artwork/clientCompress";
 import { OptionGroup } from "@/components/avatar/OptionGroup";
-import { Button, LinkButton } from "@/components/ui/Button";
+import { LinkButton } from "@/components/ui/Button";
+import { TextField, TextAreaField } from "@/components/ui/Field";
 import { CopyLinkButton } from "@/components/museum/CopyLinkButton";
+import { cn } from "@/utils/cn";
 import { ArtworkDraftItem, type DraftArtwork } from "./ArtworkDraftItem";
 
 function randomId() {
   return Math.random().toString(36).slice(2, 10);
+}
+
+function UploadDropIcon() {
+  return (
+    <svg viewBox="0 0 32 32" fill="none" className="h-7 w-7" aria-hidden="true">
+      <path
+        d="M16 20V6M12 10l4-4 4 4"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M6 20v3a3 3 0 0 0 3 3h14a3 3 0 0 0 3-3v-3"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/**
+ * Drag-and-drop + click-to-browse upload target. `compact` is used once
+ * artwork already exists, so re-opening the picker doesn't require scrolling
+ * back to a full-size zone above a potentially long draft list. Drag
+ * handlers are additive to the existing click-to-browse `<input>` -- neither
+ * replaces the other.
+ */
+function UploadDropzone({
+  compact,
+  disabled,
+  preparing,
+  onFiles,
+  fileInputRef,
+}: {
+  compact: boolean;
+  disabled: boolean;
+  preparing: boolean;
+  onFiles: (files: FileList | null) => void;
+  fileInputRef: React.RefObject<HTMLInputElement | null>;
+}) {
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
+
+  function openPicker() {
+    if (!disabled) fileInputRef.current?.click();
+  }
+
+  return (
+    <div
+      role="button"
+      tabIndex={disabled ? -1 : 0}
+      aria-disabled={disabled}
+      onClick={openPicker}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          openPicker();
+        }
+      }}
+      onDragOver={(event) => {
+        event.preventDefault();
+        if (!disabled) setIsDraggingOver(true);
+      }}
+      onDragLeave={(event) => {
+        event.preventDefault();
+        setIsDraggingOver(false);
+      }}
+      onDrop={(event) => {
+        event.preventDefault();
+        setIsDraggingOver(false);
+        if (!disabled) onFiles(event.dataTransfer.files);
+      }}
+      className={cn(
+        "flex cursor-pointer flex-col items-center gap-3 rounded-2xl border border-dashed text-center transition-colors duration-200",
+        compact ? "flex-row justify-center gap-3 p-5 text-left" : "p-10",
+        isDraggingOver ? "border-sage bg-sage/10" : "border-border bg-canvas-deep/50 hover:border-sage-dark/50 hover:bg-canvas-deep/70",
+        disabled && "pointer-events-none cursor-not-allowed opacity-50"
+      )}
+    >
+      <span
+        aria-hidden="true"
+        className={cn(
+          "flex shrink-0 items-center justify-center rounded-full border border-border bg-surface text-ink-muted shadow-warm-xs",
+          compact ? "h-10 w-10" : "h-14 w-14"
+        )}
+      >
+        <UploadDropIcon />
+      </span>
+      <div>
+        <p className={cn("font-display text-ink", compact ? "text-base" : "text-xl")}>
+          {preparing ? "Preparing…" : "Drag images here, or click to browse"}
+        </p>
+        {!compact && (
+          <p className="mx-auto mt-1 max-w-sm text-sm text-ink-muted">
+            PNG, JPEG, WebP, or GIF -- up to {MAX_ARTWORKS_PER_MUSEUM} images.
+          </p>
+        )}
+      </div>
+    </div>
+  );
 }
 
 type SubmitState =
@@ -172,39 +276,30 @@ export function CreateMuseumForm() {
     <form onSubmit={handleSubmit} className="flex flex-col gap-10">
       <section className="flex flex-col gap-5 rounded-[1.75rem] border border-border/70 bg-surface p-6 shadow-warm-sm sm:p-8">
         <h2 className="font-display text-xl text-ink">About your museum</h2>
-        <label className="flex flex-col gap-1.5 text-sm">
-          <span className="font-medium text-ink">Museum name</span>
-          <input
-            type="text"
-            required
-            value={name}
-            onChange={(e) => setName(e.target.value)}
-            className="rounded-lg border border-border bg-canvas px-3 py-2.5 text-ink outline-none focus-visible:border-terracotta"
-            placeholder="e.g. Late Afternoon"
-          />
-        </label>
-        <label className="flex flex-col gap-1.5 text-sm">
-          <span className="font-medium text-ink">Description</span>
-          <textarea
-            value={description}
-            onChange={(e) => setDescription(e.target.value)}
-            rows={2}
-            className="resize-none rounded-lg border border-border bg-canvas px-3 py-2.5 text-ink outline-none focus-visible:border-terracotta"
-            placeholder="What is this collection about?"
-          />
-        </label>
-        <label className="flex flex-col gap-1.5 text-sm">
-          <span className="font-medium text-ink">
-            Your name <span className="font-normal text-ink-muted">(fills in new pieces automatically)</span>
-          </span>
-          <input
-            type="text"
-            value={primaryArtist}
-            onChange={(e) => setPrimaryArtist(e.target.value)}
-            className="max-w-xs rounded-lg border border-border bg-canvas px-3 py-2.5 text-ink outline-none focus-visible:border-terracotta"
-            placeholder="Your name"
-          />
-        </label>
+        <TextField
+          label="Museum name"
+          type="text"
+          required
+          value={name}
+          onChange={(e) => setName(e.target.value)}
+          placeholder="e.g. Late Afternoon"
+        />
+        <TextAreaField
+          label="Description"
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          rows={2}
+          placeholder="What is this collection about?"
+        />
+        <TextField
+          label="Your name"
+          hint="(fills in new pieces automatically)"
+          type="text"
+          value={primaryArtist}
+          onChange={(e) => setPrimaryArtist(e.target.value)}
+          labelClassName="max-w-xs"
+          placeholder="Your name"
+        />
         <OptionGroup
           legend="Gallery theme"
           name="theme"
@@ -243,12 +338,13 @@ export function CreateMuseumForm() {
           />
         </div>
 
-        {uploadError && <p className="text-sm text-terracotta-dark">{uploadError}</p>}
+        {uploadError && <p className="text-sm text-dusty-red-dark">{uploadError}</p>}
 
         {artworks.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-border bg-canvas-deep/50 p-10 text-center text-sm text-ink-muted">
-            No artwork yet. Upload a few images to start building your gallery.
-          </div>
+          <EmptyState
+            title="No artwork yet"
+            description="Upload a few images to start building your gallery."
+          />
         ) : (
           <ul className="flex flex-col gap-4">
             {artworks.map((artwork, index) => (
@@ -265,7 +361,7 @@ export function CreateMuseumForm() {
       </section>
 
       {submitState.status === "error" && (
-        <p role="alert" className="text-sm font-medium text-terracotta-dark">
+        <p role="alert" className="text-sm font-medium text-dusty-red-dark">
           {submitState.message}
         </p>
       )}

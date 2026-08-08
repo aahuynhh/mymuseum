@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useId, useState } from "react";
 import { useRouter } from "next/navigation";
 import type { Artwork } from "@/types";
-import { Button } from "@/components/ui/Button";
+import { TextField, TextAreaField } from "@/components/ui/Field";
+import { SaveStatus, type SaveStatusState } from "@/components/ui/SaveStatus";
+import { ConfirmInline } from "@/components/ui/ConfirmInline";
 
 type SaveState = "idle" | "saving" | "success" | "error";
 type DeleteState = "idle" | "confirming" | "deleting" | "error";
@@ -12,7 +14,16 @@ type DeleteState = "idle" | "confirming" | "deleting" | "error";
  * text, each row with its own independent Save, plus its own Remove (with
  * an inline confirm step, same pattern as DeleteMuseumButton). Never edits
  * the image itself -- swapping the picture means removing this artwork and
- * adding a new one (see AddArtworkForm). */
+ * adding a new one (see AddArtworkForm).
+ *
+ * Collapsed by default behind an explicit Edit/Done toggle (not an
+ * implicitly-clickable card) so a museum with many pieces doesn't force a
+ * long scroll of fully-open forms. All field state lives in this
+ * component's own useState regardless of whether the fields are currently
+ * rendered, so collapsing and reopening a row never loses an unsaved edit --
+ * only the JSX for the fields is conditionally shown, this component
+ * instance itself is never unmounted (React keys this list by artwork.id).
+ */
 export function EditArtworkRow({
   museumId,
   artwork,
@@ -23,6 +34,8 @@ export function EditArtworkRow({
   canDelete: boolean;
 }) {
   const router = useRouter();
+  const fieldsId = useId();
+  const [expanded, setExpanded] = useState(false);
   const [title, setTitle] = useState(artwork.title);
   const [artist, setArtist] = useState(artwork.artist);
   const [year, setYear] = useState(String(artwork.year));
@@ -41,6 +54,10 @@ export function EditArtworkRow({
     medium !== artwork.medium ||
     description !== artwork.description ||
     altText !== artwork.altText;
+
+  // Same rule as EditMuseumMetadataForm: hide a stale "Saved." the moment
+  // the row is dirty again, without resetting `saveState` itself.
+  const saveDisplayState: SaveStatusState = saveState === "success" && isDirty ? "idle" : saveState;
 
   async function handleSave() {
     if (!title.trim() || !artist.trim()) {
@@ -96,124 +113,81 @@ export function EditArtworkRow({
   }
 
   return (
-    <li className="flex flex-col gap-4 rounded-2xl border border-border/70 bg-surface p-4 shadow-warm-xs sm:flex-row sm:p-5">
-      <div className="h-32 w-full shrink-0 overflow-hidden rounded-xl border border-border/60 bg-canvas-deep sm:w-32">
-        {/* Signed Storage URL for this artwork's real uploaded image */}
-        <img src={artwork.imageUrl} alt="" className="h-full w-full object-cover" />
-      </div>
-      <div className="flex flex-1 flex-col gap-3">
-        <div className="flex items-center justify-between gap-3">
+    <li className="rounded-2xl border border-border/70 bg-surface shadow-warm-xs">
+      <div className="flex flex-wrap items-center gap-3 p-4 sm:p-5">
+        <div className="h-14 w-14 shrink-0 overflow-hidden rounded-lg border border-border/60 bg-canvas-deep">
+          {/* Signed Storage URL for this artwork's real uploaded image */}
+          <img src={artwork.imageUrl} alt="" className="h-full w-full object-cover" />
+        </div>
+        <div className="min-w-0 flex-1">
           <p className="text-xs font-semibold uppercase tracking-[0.08em] text-ink-muted">
             Piece {artwork.displayOrder}
           </p>
-          {deleteState === "confirming" || deleteState === "deleting" ? (
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-ink-muted">Remove this piece?</span>
-              <Button
-                type="button"
-                variant="ghost"
-                size="md"
-                onClick={() => setDeleteState("idle")}
-                disabled={deleteState === "deleting"}
-                className="px-2.5 py-1 text-xs"
-              >
-                Cancel
-              </Button>
-              <Button
-                type="button"
-                variant="secondary"
-                size="md"
-                onClick={handleDelete}
-                disabled={deleteState === "deleting"}
-                className="px-2.5 py-1 text-xs"
-              >
-                {deleteState === "deleting" ? "Removing…" : "Confirm"}
-              </Button>
-            </div>
-          ) : (
-            <button
-              type="button"
-              onClick={() => setDeleteState("confirming")}
-              disabled={!canDelete}
-              title={canDelete ? undefined : "A museum needs at least one artwork"}
-              className="text-xs font-medium text-ink-muted underline-offset-2 transition-colors hover:text-terracotta-dark hover:underline disabled:opacity-40 disabled:hover:no-underline"
-            >
-              Remove
-            </button>
-          )}
+          <p className="truncate font-display text-base text-ink">{title.trim() || "Untitled"}</p>
+          <p className="truncate text-sm text-ink-muted">{artist.trim() || "Unknown artist"}</p>
         </div>
-        {deleteError && <p className="text-xs text-terracotta-dark">{deleteError}</p>}
+        {isDirty && !expanded && (
+          <span className="inline-flex items-center gap-1.5 text-xs font-medium text-flax">
+            <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-flax" />
+            Unsaved
+          </span>
+        )}
+        <ConfirmInline
+          triggerLabel="Remove"
+          triggerDisabled={!canDelete}
+          triggerDisabledTitle="A museum needs at least one artwork"
+          confirming={deleteState === "confirming" || deleteState === "deleting"}
+          busy={deleteState === "deleting"}
+          onRequestConfirm={() => setDeleteState("confirming")}
+          onCancel={() => setDeleteState("idle")}
+          onConfirm={handleDelete}
+          confirmPrompt="Remove this piece?"
+          confirmingLabel="Removing…"
+        />
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          aria-expanded={expanded}
+          aria-controls={fieldsId}
+          className="shrink-0 rounded-full border border-border px-3.5 py-1.5 text-xs font-medium text-ink transition-colors duration-200 hover:border-sage-dark hover:text-sage-dark"
+        >
+          {expanded ? "Done" : "Edit"}
+        </button>
+      </div>
+      {deleteError && <p className="px-4 pb-3 text-xs text-dusty-red-dark sm:px-5">{deleteError}</p>}
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <label className="flex flex-col gap-1 text-sm">
-            <span className="font-medium text-ink">Title</span>
-            <input
-              type="text"
-              value={title}
-              onChange={(e) => setTitle(e.target.value)}
-              className="rounded-lg border border-border bg-canvas px-3 py-2 text-sm text-ink outline-none focus-visible:border-terracotta"
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-sm">
-            <span className="font-medium text-ink">Artist</span>
-            <input
-              type="text"
-              value={artist}
-              onChange={(e) => setArtist(e.target.value)}
-              className="rounded-lg border border-border bg-canvas px-3 py-2 text-sm text-ink outline-none focus-visible:border-terracotta"
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-sm">
-            <span className="font-medium text-ink">Medium</span>
-            <input
-              type="text"
-              value={medium}
-              onChange={(e) => setMedium(e.target.value)}
-              className="rounded-lg border border-border bg-canvas px-3 py-2 text-sm text-ink outline-none focus-visible:border-terracotta"
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-sm">
-            <span className="font-medium text-ink">Year</span>
-            <input
-              type="number"
-              value={year}
-              onChange={(e) => setYear(e.target.value)}
-              className="rounded-lg border border-border bg-canvas px-3 py-2 text-sm text-ink outline-none focus-visible:border-terracotta"
-            />
-          </label>
-        </div>
-        <label className="flex flex-col gap-1 text-sm">
-          <span className="font-medium text-ink">Description</span>
-          <textarea
+      {expanded && (
+        <div id={fieldsId} className="flex flex-col gap-4 border-t border-border/70 px-4 pb-5 pt-4 sm:px-5">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <TextField compact label="Title" type="text" value={title} onChange={(e) => setTitle(e.target.value)} />
+            <TextField compact label="Artist" type="text" value={artist} onChange={(e) => setArtist(e.target.value)} />
+            <TextField compact label="Medium" type="text" value={medium} onChange={(e) => setMedium(e.target.value)} />
+            <TextField compact label="Year" type="number" value={year} onChange={(e) => setYear(e.target.value)} />
+          </div>
+          <TextAreaField
+            compact
+            label="Description"
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             rows={2}
-            className="resize-none rounded-lg border border-border bg-canvas px-3 py-2 text-sm text-ink outline-none focus-visible:border-terracotta"
           />
-        </label>
-        <label className="flex flex-col gap-1 text-sm">
-          <span className="font-medium text-ink">
-            Alt text <span className="font-normal text-ink-muted">(accessible image description)</span>
-          </span>
-          <textarea
+          <TextAreaField
+            compact
+            label="Alt text"
+            hint="(accessible image description)"
             value={altText}
             onChange={(e) => setAltText(e.target.value)}
             rows={2}
-            className="resize-none rounded-lg border border-border bg-canvas px-3 py-2 text-sm text-ink outline-none focus-visible:border-terracotta"
           />
-        </label>
-        <div className="flex flex-wrap items-center gap-3">
-          <Button type="button" size="md" onClick={handleSave} disabled={!isDirty || saveState === "saving"}>
-            {saveState === "saving" ? "Saving…" : "Save"}
-          </Button>
-          {saveState === "success" && !isDirty && <p className="text-sm text-sage-dark">Saved.</p>}
-          {saveError && (
-            <p role="alert" className="text-sm font-medium text-terracotta-dark">
-              {saveError}
-            </p>
-          )}
+          <SaveStatus
+            size="md"
+            state={saveDisplayState}
+            onSave={handleSave}
+            disabled={!isDirty}
+            errorMessage={saveError}
+          />
         </div>
-      </div>
+      )}
     </li>
   );
 }

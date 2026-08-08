@@ -3,7 +3,9 @@ import type { Museum } from "@/types";
 import type { GalleryThemeId } from "@/game/museum/themes";
 import { createClient } from "@/lib/supabase/server";
 import { getArtworksForMuseum } from "./artworksRepository";
-import { deleteArtworkFolder } from "@/lib/artwork/storage";
+import { deleteArtworkFolder, getSignedArtworkUrls } from "@/lib/artwork/storage";
+
+type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
 /**
  * Postgres-backed store for user-created museums (replaces the old
@@ -57,6 +59,12 @@ export interface MuseumSummary {
   description: string;
   createdAt: string;
   isPublished: boolean;
+  /** First artwork's signed image URL (by display order), for the
+   * dashboard's museum card thumbnail -- resolved through the same private
+   * `artwork-images` bucket + short-lived signed URL every other artwork
+   * image goes through (see lib/artwork/storage.ts). `null` if the museum
+   * has no artwork yet. */
+  coverImageUrl: string | null;
 }
 
 /**
@@ -77,13 +85,59 @@ export async function getMuseumSummariesForOwner(ownerId: string): Promise<Museu
     .order("created_at", { ascending: false });
 
   if (error || !data) return [];
+
+  const coverImageUrls = await getCoverImageUrls(
+    supabase,
+    data.map((row) => row.id)
+  );
+
   return data.map((row) => ({
     id: row.id,
     name: row.name,
     description: row.description,
     createdAt: row.created_at,
     isPublished: row.is_published,
+    coverImageUrl: coverImageUrls.get(row.id) ?? null,
   }));
+}
+
+/**
+ * Resolves each museum's cover image -- its first artwork by display
+ * order -- through the same signed-URL path `getArtworksForMuseum` already
+ * uses for every artwork image. No new access system: this reads through
+ * the same RLS-scoped client, the same private bucket, the same
+ * `getSignedArtworkUrls` batching helper. Museums with no artwork yet are
+ * simply absent from the returned map.
+ */
+async function getCoverImageUrls(
+  supabase: SupabaseServerClient,
+  museumIds: string[]
+): Promise<Map<string, string>> {
+  const result = new Map<string, string>();
+  if (museumIds.length === 0) return result;
+
+  const { data, error } = await supabase
+    .from("artworks")
+    .select("museum_id, storage_path, display_order")
+    .in("museum_id", museumIds)
+    .order("display_order", { ascending: true });
+
+  if (error || !data) return result;
+
+  const firstPathByMuseum = new Map<string, string>();
+  for (const row of data) {
+    if (!firstPathByMuseum.has(row.museum_id)) {
+      firstPathByMuseum.set(row.museum_id, row.storage_path);
+    }
+  }
+  if (firstPathByMuseum.size === 0) return result;
+
+  const signedUrls = await getSignedArtworkUrls(supabase, [...firstPathByMuseum.values()]);
+  for (const [museumId, path] of firstPathByMuseum) {
+    const url = signedUrls.get(path);
+    if (url) result.set(museumId, url);
+  }
+  return result;
 }
 
 export interface MuseumEditContext {

@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Button } from "@/components/ui/Button";
+import { TextField } from "@/components/ui/Field";
 import { signIn } from "@/app/auth/actions";
 
 type SubmitState =
@@ -30,33 +31,27 @@ export function SignInForm() {
       onSubmit={handleSubmit}
       className="flex flex-col gap-5 rounded-[1.75rem] border border-border/70 bg-surface p-6 shadow-warm-sm sm:p-8"
     >
-      <label className="flex flex-col gap-1.5 text-sm">
-        <span className="font-medium text-ink">Email</span>
-        <input
-          type="email"
-          required
-          autoComplete="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          className="rounded-lg border border-border bg-canvas px-3 py-2.5 text-ink outline-none focus-visible:border-terracotta"
-          placeholder="you@example.com"
-        />
-      </label>
-      <label className="flex flex-col gap-1.5 text-sm">
-        <span className="font-medium text-ink">Password</span>
-        <input
-          type="password"
-          required
-          autoComplete="current-password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          className="rounded-lg border border-border bg-canvas px-3 py-2.5 text-ink outline-none focus-visible:border-terracotta"
-          placeholder="Your password"
-        />
-      </label>
+      <TextField
+        label="Email"
+        type="email"
+        required
+        autoComplete="email"
+        value={email}
+        onChange={(e) => setEmail(e.target.value)}
+        placeholder="you@example.com"
+      />
+      <TextField
+        label="Password"
+        type="password"
+        required
+        autoComplete="current-password"
+        value={password}
+        onChange={(e) => setPassword(e.target.value)}
+        placeholder="Your password"
+      />
 
       {submitState.status === "error" && (
-        <p role="alert" className="text-sm font-medium text-terracotta-dark">
+        <p role="alert" className="text-sm font-medium text-dusty-red-dark">
           {submitState.message}
         </p>
       )}

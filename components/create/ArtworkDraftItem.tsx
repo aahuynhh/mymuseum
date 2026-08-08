@@ -1,5 +1,7 @@
 "use client";
 
+import { TextField, TextAreaField } from "@/components/ui/Field";
+
 interface DraftArtwork {
   id: string;
   title: string;
@@ -48,61 +50,50 @@ export function ArtworkDraftItem({ artwork, index, onChange, onRemove }: Artwork
           </button>
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <label className="flex flex-col gap-1 text-sm">
-            <span className="font-medium text-ink">Title</span>
-            <input
-              type="text"
-              required
-              value={artwork.title}
-              onChange={(e) => onChange(artwork.id, { title: e.target.value })}
-              className="rounded-lg border border-border bg-canvas px-3 py-2 text-sm text-ink outline-none focus-visible:border-terracotta"
-              placeholder="Untitled"
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-sm">
-            <span className="font-medium text-ink">Artist</span>
-            <input
-              type="text"
-              required
-              value={artwork.artist}
-              onChange={(e) => onChange(artwork.id, { artist: e.target.value })}
-              className="rounded-lg border border-border bg-canvas px-3 py-2 text-sm text-ink outline-none focus-visible:border-terracotta"
-              placeholder="Your name"
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-sm">
-            <span className="font-medium text-ink">Medium</span>
-            <input
-              type="text"
-              value={artwork.medium}
-              onChange={(e) => onChange(artwork.id, { medium: e.target.value })}
-              className="rounded-lg border border-border bg-canvas px-3 py-2 text-sm text-ink outline-none focus-visible:border-terracotta"
-              placeholder="Oil on canvas"
-            />
-          </label>
-          <label className="flex flex-col gap-1 text-sm">
-            <span className="font-medium text-ink">Year</span>
-            <input
-              type="number"
-              value={artwork.year}
-              onChange={(e) => onChange(artwork.id, { year: e.target.value })}
-              className="rounded-lg border border-border bg-canvas px-3 py-2 text-sm text-ink outline-none focus-visible:border-terracotta"
-              placeholder={String(new Date().getFullYear())}
-            />
-          </label>
-        </div>
-        <label className="flex flex-col gap-1 text-sm">
-          <span className="font-medium text-ink">
-            Description <span className="font-normal text-ink-muted">(optional -- also used as the accessible image description)</span>
-          </span>
-          <textarea
-            value={artwork.description}
-            onChange={(e) => onChange(artwork.id, { description: e.target.value })}
-            rows={2}
-            className="resize-none rounded-lg border border-border bg-canvas px-3 py-2 text-sm text-ink outline-none focus-visible:border-terracotta"
-            placeholder="A short note about this piece..."
+          <TextField
+            compact
+            label="Title"
+            type="text"
+            required
+            value={artwork.title}
+            onChange={(e) => onChange(artwork.id, { title: e.target.value })}
+            placeholder="Untitled"
           />
-        </label>
+          <TextField
+            compact
+            label="Artist"
+            type="text"
+            required
+            value={artwork.artist}
+            onChange={(e) => onChange(artwork.id, { artist: e.target.value })}
+            placeholder="Your name"
+          />
+          <TextField
+            compact
+            label="Medium"
+            type="text"
+            value={artwork.medium}
+            onChange={(e) => onChange(artwork.id, { medium: e.target.value })}
+            placeholder="Oil on canvas"
+          />
+          <TextField
+            compact
+            label="Year"
+            type="number"
+            value={artwork.year}
+            onChange={(e) => onChange(artwork.id, { year: e.target.value })}
+            placeholder={String(new Date().getFullYear())}
+          />
+        </div>
+        <TextAreaField
+          compact
+          label="Description"
+          hint="(optional -- also used as the accessible image description)"
+          value={artwork.description}
+          onChange={(e) => onChange(artwork.id, { description: e.target.value })}
+          rows={2}
+          placeholder="A short note about this piece..."
+        />
       </div>
     </li>
   );

@@ -3,6 +3,7 @@ import { notFound } from "next/navigation";
 import { SiteHeader } from "@/components/ui/SiteHeader";
 import { SiteFooter } from "@/components/ui/SiteFooter";
 import { LinkButton } from "@/components/ui/Button";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { getCurrentUser } from "@/lib/supabase/server";
 import { getMuseumEditContext } from "@/server/museumsRepository";
 import { getArtworksForMuseum } from "@/server/artworksRepository";
@@ -65,20 +66,18 @@ export default async function EditMuseumPage({
     <>
       <SiteHeader />
       <main id="main-content" className="mx-auto w-full max-w-3xl flex-1 px-6 py-12 sm:py-16">
-        <header className="mb-10 flex flex-wrap items-center justify-between gap-4">
-          <div>
-            <p className="font-display text-sm italic text-terracotta-dark">Edit Museum</p>
-            <h1 className="mt-2 font-display text-3xl text-ink sm:text-4xl">{museum.name}</h1>
-          </div>
-          <LinkButton href={`/museum/${museum.id}`} variant="secondary">
-            View live museum
-          </LinkButton>
-        </header>
+        <PageHeader
+          eyebrow="Edit Museum"
+          title={museum.name}
+          actions={
+            <LinkButton href={`/museum/${museum.id}`} variant="secondary">
+              View live museum
+            </LinkButton>
+          }
+        />
 
         <div className="flex flex-col gap-10">
-          <section className="rounded-[1.75rem] border border-border/70 bg-surface p-6 shadow-warm-sm sm:p-8">
-            <PublishToggle museumId={museum.id} initialIsPublished={museum.isPublished} />
-          </section>
+          <PublishToggle museumId={museum.id} initialIsPublished={museum.isPublished} />
 
           <EditMuseumMetadataForm
             museumId={museum.id}

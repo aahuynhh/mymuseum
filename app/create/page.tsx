@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { SiteHeader } from "@/components/ui/SiteHeader";
 import { SiteFooter } from "@/components/ui/SiteFooter";
 import { LinkButton } from "@/components/ui/Button";
+import { PageHeader } from "@/components/ui/PageHeader";
 import { CreateMuseumForm } from "@/components/create/CreateMuseumForm";
 import { getCurrentUser } from "@/lib/supabase/server";
 
@@ -17,13 +18,11 @@ export default async function CreatePage() {
     <>
       <SiteHeader />
       <main id="main-content" className="mx-auto w-full max-w-3xl flex-1 px-6 py-12 sm:py-16">
-        <header className="mb-10 max-w-2xl">
-          <p className="font-display text-sm italic text-terracotta-dark">Create My Museum</p>
-          <h1 className="mt-2 font-display text-3xl text-ink sm:text-4xl">Build your own gallery</h1>
-          <p className="mt-3 text-ink-muted">
-            Upload a few pieces, pick a gallery theme, and get a shareable virtual museum.
-          </p>
-        </header>
+        <PageHeader
+          eyebrow="New museum"
+          title="Build your own gallery"
+          description="Upload a few pieces, pick a gallery theme, and get a shareable virtual museum."
+        />
         {user ? (
           <CreateMuseumForm />
         ) : (
