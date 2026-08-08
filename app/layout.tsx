@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Fraunces, Inter } from "next/font/google";
 import { SkipLink } from "@/components/ui/SkipLink";
 import { MotionProvider } from "@/components/ui/MotionProvider";
+import { SITE_URL } from "@/lib/site";
 import "./globals.css";
 
 const fraunces = Fraunces({
@@ -15,8 +16,6 @@ const inter = Inter({
   variable: "--font-inter",
   subsets: ["latin"],
 });
-
-const SITE_URL = "https://mymuseum.example.com";
 
 export const metadata: Metadata = {
   metadataBase: new URL(SITE_URL),

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { SiteHeader } from "@/components/ui/SiteHeader";
 import { SiteFooter } from "@/components/ui/SiteFooter";
 import { LinkButton } from "@/components/ui/Button";
+import { CopyLinkButton } from "@/components/museum/CopyLinkButton";
 import { getCurrentUser } from "@/lib/supabase/server";
 import { getMuseumSummariesForOwner } from "@/server/museumsRepository";
 import { DeleteMuseumButton } from "@/components/dashboard/DeleteMuseumButton";
@@ -90,7 +91,18 @@ async function DashboardContent({ ownerId }: { ownerId: string }) {
               className="flex flex-wrap items-center justify-between gap-4 rounded-[1.75rem] border border-border/70 bg-surface p-6 shadow-warm-sm"
             >
               <div className="min-w-0">
-                <h2 className="font-display text-xl text-ink">{museum.name}</h2>
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="font-display text-xl text-ink">{museum.name}</h2>
+                  <span
+                    className={
+                      museum.isPublished
+                        ? "rounded-full bg-sage/15 px-2.5 py-0.5 text-xs font-medium text-sage-dark"
+                        : "rounded-full bg-canvas-deep px-2.5 py-0.5 text-xs font-medium text-ink-muted"
+                    }
+                  >
+                    {museum.isPublished ? "Published" : "Private"}
+                  </span>
+                </div>
                 {museum.description && (
                   <p className="mt-1 max-w-md truncate text-sm text-ink-muted">
                     {museum.description}
@@ -99,9 +111,15 @@ async function DashboardContent({ ownerId }: { ownerId: string }) {
                 <p className="mt-2 text-xs text-ink-muted">Created {formatDate(museum.createdAt)}</p>
               </div>
               <div className="flex flex-col items-end gap-3">
-                <LinkButton href={`/museum/${museum.id}`} variant="secondary">
-                  Open Museum
-                </LinkButton>
+                <div className="flex flex-wrap items-center justify-end gap-2">
+                  <LinkButton href={`/dashboard/${museum.id}/edit`} variant="secondary">
+                    Edit
+                  </LinkButton>
+                  <LinkButton href={`/museum/${museum.id}`} variant="secondary">
+                    View Museum
+                  </LinkButton>
+                  <CopyLinkButton path={`/museum/${museum.id}`} isPrivate={!museum.isPublished} />
+                </div>
                 <DeleteMuseumButton museumId={museum.id} museumName={museum.name} />
               </div>
             </li>

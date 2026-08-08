@@ -1,5 +1,6 @@
 import "server-only";
 import type { Museum } from "@/types";
+import type { GalleryThemeId } from "@/game/museum/themes";
 import { createClient } from "@/lib/supabase/server";
 import { getArtworksForMuseum } from "./artworksRepository";
 import { deleteArtworkFolder } from "@/lib/artwork/storage";
@@ -55,6 +56,7 @@ export interface MuseumSummary {
   name: string;
   description: string;
   createdAt: string;
+  isPublished: boolean;
 }
 
 /**
@@ -70,7 +72,7 @@ export async function getMuseumSummariesForOwner(ownerId: string): Promise<Museu
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("museums")
-    .select("id, name, description, created_at")
+    .select("id, name, description, created_at, is_published")
     .eq("owner_id", ownerId)
     .order("created_at", { ascending: false });
 
@@ -80,7 +82,138 @@ export async function getMuseumSummariesForOwner(ownerId: string): Promise<Museu
     name: row.name,
     description: row.description,
     createdAt: row.created_at,
+    isPublished: row.is_published,
   }));
+}
+
+export interface MuseumEditContext {
+  id: string;
+  name: string;
+  description: string;
+  isPublished: boolean;
+  theme: GalleryThemeId;
+}
+
+/**
+ * Purpose-built read for the edit page (Phase 3) -- deliberately separate
+ * from `getMuseumById`/`MUSEUM_COLUMNS` above, which back the public 3D
+ * viewer and don't need `is_published` or `theme` (the viewer reads the
+ * room's own `theme` field out of the `rooms` jsonb it already fetches).
+ * Scoped by `ownerId` in addition to RLS, so a non-owner or a wrong id
+ * indistinguishably comes back as `null` here, matching `deleteMuseum`'s
+ * not-found-or-not-owned convention.
+ */
+export async function getMuseumEditContext(
+  museumId: string,
+  ownerId: string
+): Promise<MuseumEditContext | null> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("museums")
+    .select("id, name, description, is_published, rooms")
+    .eq("id", museumId)
+    .eq("owner_id", ownerId)
+    .maybeSingle();
+
+  if (error || !data) return null;
+  const rooms = data.rooms as Museum["rooms"];
+  return {
+    id: data.id,
+    name: data.name,
+    description: data.description,
+    isPublished: data.is_published,
+    theme: rooms[0]?.theme ?? "linen",
+  };
+}
+
+export interface MuseumMetadataPatch {
+  name?: string;
+  description?: string;
+  isPublished?: boolean;
+  theme?: GalleryThemeId;
+}
+
+/**
+ * Updates museum-level metadata/publish state/theme. Scoped by `ownerId` in
+ * addition to RLS's own `owner_id = auth.uid()` check (`museums_update_own`)
+ * -- belt-and-suspenders, not a substitute for it. A `theme` change also
+ * patches `rooms[0].theme` in the same statement, since that's the field
+ * actually read at render time (see `MuseumEditContext` above); the
+ * `theme` column itself stays in sync as a denormalized copy, matching how
+ * `createMuseum` already writes it. Returns `false` if no row matched
+ * (not found, or not owned by `ownerId`).
+ */
+export async function updateMuseumMetadata(
+  museumId: string,
+  ownerId: string,
+  patch: MuseumMetadataPatch
+): Promise<boolean> {
+  const supabase = await createClient();
+
+  const update: Record<string, unknown> = {};
+  if (patch.name !== undefined) update.name = patch.name;
+  if (patch.description !== undefined) update.description = patch.description;
+  if (patch.isPublished !== undefined) update.is_published = patch.isPublished;
+
+  if (patch.theme !== undefined) {
+    const { data: current, error: readError } = await supabase
+      .from("museums")
+      .select("rooms")
+      .eq("id", museumId)
+      .eq("owner_id", ownerId)
+      .maybeSingle();
+    if (readError || !current) return false;
+
+    const rooms = current.rooms as Museum["rooms"];
+    if (rooms[0]) rooms[0] = { ...rooms[0], theme: patch.theme };
+    update.rooms = rooms;
+    update.theme = patch.theme;
+  }
+
+  if (Object.keys(update).length === 0) return true;
+
+  const { data, error } = await supabase
+    .from("museums")
+    .update(update)
+    .eq("id", museumId)
+    .eq("owner_id", ownerId)
+    .select("id")
+    .maybeSingle();
+
+  if (error) {
+    console.error("[museums] failed to update museum metadata:", error.message, museumId);
+  }
+  return !error && data !== null;
+}
+
+/**
+ * Writes a freshly recomputed layout (room bounds/openings, opening
+ * connectors, spawn point) back onto an existing museum row -- used by
+ * `server/museumLayout.ts`'s `relayoutMuseum` after an artwork is added or
+ * removed. Never touches `name`/`description`/`is_published`/`theme`.
+ */
+export async function updateMuseumLayout(
+  museumId: string,
+  ownerId: string,
+  layout: Pick<Museum, "rooms" | "openingConnectors" | "spawnPoint">
+): Promise<boolean> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("museums")
+    .update({
+      rooms: layout.rooms,
+      opening_connectors: layout.openingConnectors,
+      spawn_point: layout.spawnPoint,
+    })
+    .eq("id", museumId)
+    .eq("owner_id", ownerId)
+    .select("id")
+    .maybeSingle();
+
+  if (error) {
+    console.error("[museums] failed to update museum layout:", error.message, museumId);
+  }
+  return !error && data !== null;
 }
 
 export async function getMuseumById(id: string): Promise<Museum | null> {

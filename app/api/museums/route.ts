@@ -8,27 +8,17 @@ import { getCurrentUser, createClient } from "@/lib/supabase/server";
 import { validateImage, ImageValidationError } from "@/lib/artwork/validateImage";
 import { parseUploadRequest, PayloadTooLargeError, type ParsedFile } from "@/lib/artwork/parseUploadRequest";
 import { buildArtworkStoragePath, uploadArtworkImage, deleteArtworkImages } from "@/lib/artwork/storage";
-import { MAX_ARTWORKS_PER_MUSEUM, MAX_TOTAL_REQUEST_BYTES } from "@/lib/artwork/limits";
-
-const MAX_NAME_LENGTH = 80;
-const MAX_DESCRIPTION_LENGTH = 500;
-const MAX_TITLE_LENGTH = 80;
-const MAX_ARTIST_LENGTH = 60;
-const MAX_ARTWORK_DESCRIPTION_LENGTH = 500;
-const MAX_MEDIUM_LENGTH = 60;
-
-function slugify(input: string): string {
-  return input
-    .toLowerCase()
-    .trim()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "")
-    .slice(0, 40);
-}
-
-function randomSuffix(): string {
-  return Math.random().toString(36).slice(2, 7);
-}
+import {
+  MAX_ARTWORKS_PER_MUSEUM,
+  MAX_TOTAL_REQUEST_BYTES,
+  MAX_NAME_LENGTH,
+  MAX_DESCRIPTION_LENGTH,
+  MAX_TITLE_LENGTH,
+  MAX_ARTIST_LENGTH,
+  MAX_ARTWORK_DESCRIPTION_LENGTH,
+  MAX_MEDIUM_LENGTH,
+} from "@/lib/artwork/limits";
+import { slugify, randomSuffix } from "@/lib/museum/slug";
 
 function isString(value: unknown): value is string {
   return typeof value === "string";

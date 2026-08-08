@@ -22,3 +22,13 @@ export const ALLOWED_IMAGE_MIME_TYPES = [
   "image/webp",
   "image/gif",
 ] as const;
+
+/** Text-field length caps shared by the create flow (app/api/museums/route.ts)
+ * and the Phase 3 edit flow (museum metadata PATCH, artwork metadata PATCH,
+ * add-artwork POST) -- one copy so both stay in sync. */
+export const MAX_NAME_LENGTH = 80;
+export const MAX_DESCRIPTION_LENGTH = 500;
+export const MAX_TITLE_LENGTH = 80;
+export const MAX_ARTIST_LENGTH = 60;
+export const MAX_ARTWORK_DESCRIPTION_LENGTH = 500;
+export const MAX_MEDIUM_LENGTH = 60;

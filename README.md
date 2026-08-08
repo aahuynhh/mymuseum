@@ -73,7 +73,7 @@ The museum itself is five connected rooms, each with its own warm theme (Warm Cr
 
 **Technical implementation.** See "Architecture" and "Multiplayer architecture" below.
 
-**Current prototype scope.** One hand-designed five-room demo museum, plus a working "create your own" flow for user-uploaded museums, backed by real Supabase accounts, a Postgres database with Row Level Security enforcing ownership, and a private Storage bucket for artwork images (see "Artwork storage" below). There's still no visual editor for a museum after it's created, beyond deleting it outright. This is intentional -- see "Not implemented" for the full list and why.
+**Current prototype scope.** One hand-designed five-room demo museum, plus a working "create your own" flow for user-uploaded museums, backed by real Supabase accounts, a Postgres database with Row Level Security enforcing ownership, and a private Storage bucket for artwork images (see "Artwork storage" below), plus owner-only editing of an existing museum's metadata, publish state, and artwork (see "Creator editing & museum management" below). There's still no visual/drag-and-drop room editor -- artwork placement is always auto-computed server-side. This is intentional -- see "Not implemented" for the full list and why.
 
 **Future vision.** See "Future product vision" at the end of this document.
 
@@ -89,6 +89,7 @@ app/
   avatar/page.tsx             Avatar editor
   create/page.tsx             "Create My Museum" upload form (auth-gated)
   dashboard/page.tsx          "My Museums" -- signed-in creator's own museums
+  dashboard/[museumId]/edit/page.tsx  Owner-only museum + artwork editing (Phase 3)
   sign-up/page.tsx            Create a creator account
   sign-in/page.tsx            Sign in
   auth/actions.ts             Server Actions: signUp, signIn, signOut
@@ -96,7 +97,11 @@ app/
   artist/[username]/page.tsx  Artist profile + museum preview + share
   museum/[museumId]/page.tsx  Live 3D museum route (demo or user-created)
   api/museums/route.ts        POST: create a museum from uploaded artwork (auth-gated)
-  api/museums/[museumId]/route.ts  DELETE: owner-only museum deletion + Storage cleanup
+  api/museums/[museumId]/route.ts  PATCH: owner-only metadata/publish update;
+                                    DELETE: owner-only museum deletion + Storage cleanup
+  api/museums/[museumId]/artworks/route.ts  POST: owner-only add-artwork + relayout
+  api/museums/[museumId]/artworks/[artworkId]/route.ts  PATCH: artwork metadata edit;
+                                    DELETE: artwork removal + Storage cleanup + relayout
   not-found.tsx, */error.tsx, */loading.tsx
 
 components/
@@ -105,11 +110,15 @@ components/
   landing/       Hero, HowItWorks, FeaturedArtist (+ 3D preview loaders)
   profile/       Profile-page-only pieces (avatar bust, live visitor badge)
   avatar/        AvatarModel (3D), AvatarEditor, OptionGroup, preview canvas
-  museum/        Rooms, walls, floor, lighting, furnishings, player controller, HUD
+  museum/        Rooms, walls, floor, lighting, furnishings, player controller, HUD,
+                 CopyLinkButton (window.location.origin-based share link)
   artwork/       Frame (3D), interaction prompt, focused modal, grid fallback
   multiplayer/   RemoteAvatar, roster rendering, visitor panel
   create/        CreateMuseumForm, per-artwork upload/edit row
   dashboard/     DeleteMuseumButton
+  dashboard/edit/  EditMuseumMetadataForm, PublishToggle (+ share link),
+                 EditArtworkRow, AddArtworkForm -- Phase 3 editing UI, each with
+                 its own independent save/loading/success/error state
 
 game/            Framework-agnostic game logic, no JSX
   controls/      Keyboard input state, movement integration (pure functions)
@@ -119,16 +128,23 @@ game/            Framework-agnostic game logic, no JSX
   networking/    Socket.IO event/payload types (shared contract)
   avatar/        Shared THREE geometry instances
   museum/        Gallery themes, wall-placement math, single-room auto-layout
+                 (unmodified by Phase 3 -- reused as-is for relayout, see below)
 
 hooks/           useAvatarConfig, useVisitorIdentity, useMultiplayer,
                  useLocalStorageState, usePrefersReducedMotion, ...
 data/            Demo artist, demo museum, demo rooms, demo artwork (hardcoded)
 lib/supabase/    Browser/server Supabase clients + the Proxy session-refresh helper
-lib/artwork/     Upload limits, sharp-based server-side image validation,
-                 streaming multipart parser, Storage path/signed-URL helpers
+lib/artwork/     Upload/edit limits, sharp-based server-side image validation,
+                 streaming multipart parser, Storage path/signed-URL helpers,
+                 client-side image compression (shared by create + add-artwork)
+lib/museum/      slug.ts -- id/artwork-id slug generation, shared by create + add-artwork
+lib/site.ts      SITE_URL for server-only metadata only (see "Creator editing" below)
 server/          museumsRepository.ts, artworksRepository.ts -- Postgres-backed
-                 stores for user-created museums and their artwork
-supabase/migrations/  SQL migrations (schema + Row Level Security policies)
+                 stores for user-created museums and their artwork;
+                 museumLayout.ts -- relayoutMuseum, recomputes wall placement
+                 after an artwork add/remove (Phase 3)
+supabase/migrations/  SQL migrations (schema + Row Level Security policies) --
+                 unchanged by Phase 3; every RLS policy it needed already existed
 types/           Artwork, AvatarConfiguration, Player, Museum, GalleryRoom
 public/artwork/  Generated placeholder artwork (see below)
 scripts/         generate-placeholder-artwork.mjs
@@ -182,7 +198,7 @@ Museums are persisted in a real Postgres database (Supabase), owned by the authe
 - **The dashboard (`/dashboard`)** lists only the signed-in creator's own museums (published or not), derived from `getCurrentUser()`'s server-verified session -- never from a client-supplied id -- and filtered by that id in the query. RLS's read policy is intentionally public for *published* museums, so this filter, not RLS, is what keeps one user's dashboard from listing another user's museums; RLS is what keeps anyone from *writing* to a museum they don't own.
 - **Visitors never need an account.** Every visitor -- including a signed-in creator walking through their own or someone else's museum -- still gets a `localStorage` guest identity for multiplayer presence (`useVisitorIdentity.ts`, unchanged). Supabase session cookies and the guest identity are two independent systems that never reference each other; `server.mjs`'s Socket.IO layer has no knowledge of Supabase at all.
 - **Proxy (`proxy.ts`) now runs on almost every route**, not just `/museum/*` and `/artist/*`, so the Supabase session cookie stays refreshed everywhere (needed for `/create` and `/dashboard`'s sign-in gates and the header's logged-in state). This is a real, measurable cost versus the original file-backed prototype -- every page load now does a small amount of cookie/session work, and the app has an external dependency (Supabase reachability) it didn't have before. `next/headers`'s `cookies()` (used by the request-scoped Supabase client) does correctly reflect the real visitor's session when called from Proxy in this Next.js version, which is what lets an owner's own session be recognized even during the pre-render existence check for a private museum.
-- **Not yet built:** a publish/unpublish toggle anywhere in the UI (the `is_published` column exists and is enforced, but nothing sets it to `false` except direct SQL), and any museum-editing UI at all -- both are explicitly deferred, see "Not implemented" below.
+- **Publish/unpublish and full museum editing are built (Phase 3).** `/dashboard/[museumId]/edit` gives the owner a Published/Private toggle and museum/artwork editing, all built directly on the ownership model and RLS policies described above -- see "Creator editing & museum management" below for the full picture, including why no new migration or policy change was needed.
 
 **Environment variables required:** `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` (see `.env.example`). No service-role key is used anywhere in this app -- every database operation is subject to RLS under the requesting user's own session.
 
@@ -209,8 +225,24 @@ Museums are persisted in a real Postgres database (Supabase), owned by the authe
 - `0003_artwork_storage.sql` contains the final, correct Phase 2 schema and Storage/RLS policies -- everything a fresh database needs for artwork storage to work correctly from the start.
 - `0004_fix_artwork_images_select_upload_operation.sql`, `0005_fix_artwork_images_select_owner_prefix_only.sql`, and `0006_fix_artwork_images_storage_boundary_only.sql` are historical hotfix migrations from development, each a small, targeted `drop policy` + `create policy` for exactly the one Storage policy that needed fixing while the RLS interaction described above was being diagnosed against a real upload. They still live in `supabase/migrations/` and **will be replayed** by anything that runs the full migration sequence (`supabase db push`, `supabase db reset`, CI, a fresh deployment) -- that's fine: each is idempotent (`drop policy if exists` + `create policy`), so replaying them against a database that already has `0003`'s final policies just recreates the same end state, in the same order they were originally applied by hand. They're kept as-applied rather than rewritten into `0003` or deleted, so the migration history stays an honest record of what actually happened, not a rewritten one.
 - The legacy `museums.artworks` jsonb column removal is **deferred, not an active migration**: `supabase/deferred/drop_legacy_artwork_jsonb.sql` lives outside `supabase/migrations/` specifically so `db push`/`db reset`/CI/a future deployment never runs it automatically. It's reviewed, approved SQL waiting on a deliberate decision to run it -- not something migration tooling should ever discover on its own.
+- **Creator editing (Phase 3) required no new migration.** Every RLS policy it needed -- `museums_update_own`, `artworks_update_own`/`_insert_own`/`_delete_own`, and the Storage bucket's owner-prefix policies -- already existed from `0001`-`0003` above, none of them written with "only usable at creation time" as an assumption. See "Creator editing & museum management" below.
 
 **Before switching to `supabase db push` for deployment, resynchronize migration history first.** The dev Supabase project this was built and tested against was updated by pasting each of `0001`-`0006` into the Supabase SQL Editor by hand, not via `supabase db push` -- and the SQL Editor does not necessarily populate the CLI's own migration-history tracking (`supabase_migrations.schema_migrations`) the way `db push` does. That means this repo's local `supabase/migrations/` files and the *remote* project's recorded migration history are not guaranteed to agree, even though the actual schema does. Before running `supabase db push` (or, especially, `supabase db reset`, which replays everything from scratch) against this project, inspect and reconcile that history first (`supabase migration list` compares local vs. remote) rather than assuming the remote already matches what's in this folder -- a mismatch there is exactly the kind of thing that could cause a push to error, skip something it shouldn't, or attempt to reapply something already live.
+
+---
+
+## Creator editing & museum management
+
+**Phase 3: a signed-in owner can now manage an existing museum instead of only deleting it and starting over.** Each museum card on `/dashboard` now shows a Published/Private badge and Edit / View Museum / Copy Link actions; `/dashboard/[museumId]/edit` is the owner-only management screen.
+
+- **What an owner can do.** Rename a museum, edit its description, change its gallery theme, toggle it between Published and Private, edit any existing artwork's title/artist/year/medium/description/alt text, remove an individual artwork, and add a new artwork to an existing museum through the same secure upload path the create flow uses (`lib/artwork/validateImage.ts`, `lib/artwork/parseUploadRequest.ts`, the private `artwork-images` bucket). A museum's id and its `/museum/[museumId]` URL never change as a result of any of this -- renaming a museum only changes the `name` column, never the id it was created with.
+- **No new migration was needed.** Every column and RLS policy Phase 3 needed already existed from Phase 1/2: `museums_update_own` covers name/description/theme/`is_published` edits; `artworks_update_own`/`artworks_insert_own`/`artworks_delete_own` cover per-artwork metadata edit/add/remove; the Storage bucket's owner-prefix `INSERT`/`SELECT`/`DELETE` policies are reused unchanged for adding and removing artwork after creation. Every write route (`PATCH /api/museums/[museumId]`, `PATCH`/`DELETE /api/museums/[museumId]/artworks/[artworkId]`, `POST /api/museums/[museumId]/artworks`) also re-scopes by `museum_id`/`owner_id` in application code on top of RLS, and returns an identical 404 for "doesn't exist" and "exists but isn't yours" -- the same not-found-or-not-owned convention `deleteMuseum` already established, so no edit route ever confirms or denies that a given id belongs to someone else.
+- **Automatic layout recompute, not manual placement.** Adding or removing an artwork calls `server/museumLayout.ts`'s `relayoutMuseum`, which re-runs the same, unmodified `generateSingleRoomMuseum` (`game/museum/autoLayout.ts`) the create flow already uses, over the museum's full post-edit artwork list. That function's wall-bucketing and per-slot frame sizing were already a function of the whole collection's size and order, not any single piece, so there's no way to insert or remove one frame in isolation without its neighbors' positions shifting too -- a full recompute is the only correct option, not a shortcut. The room's `width`/`depth`/`spawnPoint` may shift slightly as a deterministic result (visitor spawn is never persisted across sessions, so this is invisible in practice); the museum's id and URL never do. A text-only artwork edit or a theme change never triggers a relayout -- neither affects aspect ratio, frame size, or wall placement.
+- **Individual artwork deletion is DB-first, Storage-second**, the same ordering and the same idiom `deleteMuseum` already used for whole-museum deletion: the `artworks` row delete is the authoritative, user-visible result, and only after it succeeds does a best-effort single-object Storage removal run (`deleteArtworkImages`, reused as-is, not the folder-listing variant museum deletion uses). A failed Storage removal never un-deletes the row or blocks the result the owner sees -- it leaves a retriable orphan at a fully deterministic path, exactly like museum deletion's own documented failure story.
+- **Share links resolve the real running origin, not a hard-coded domain.** `components/museum/CopyLinkButton.tsx` builds the copied URL as `` `${window.location.origin}${path}` `` inside its click handler, where `path` is always the stable `/museum/[museumId]` route -- so Copy Link correctly copies `http://localhost:3000/museum/...` in local dev and the real deployed origin in production, automatically, with no configuration, because it's resolved from the actual browser the button is clicked in rather than from any value baked in at build/render time. "View Museum" links (dashboard, edit page, artist profile, create-flow success screen) are, and always were, plain relative `href="/museum/[museumId]"` links, for the same reason -- in-app navigation never needed an absolute URL. The one place an absolute URL is still unavoidable is `SITE_URL` (`lib/site.ts`), used for exactly one genuinely server-only purpose: Next's `metadataBase` (`app/layout.tsx`), which resolves relative OpenGraph/Twitter image URLs and has no access to a browser's `window.location`. `SITE_URL` reads `NEXT_PUBLIC_SITE_URL` if set (see `.env.example`) and otherwise falls back to a placeholder domain, since this prototype has no deployed domain yet -- but nothing about local development, in-app navigation, or the Copy Link/share behavior depends on that value being correct. An earlier version of this feature built every share link (including Copy Link) from that same placeholder `SITE_URL`, which produced a dead, non-resolving copied link regardless of what host the app was actually running on; see "How this was verified" below.
+- **Scope limits, kept deliberately.** Artwork editing this phase is text metadata only (title/artist/year/medium/description/alt text) -- replacing an existing artwork's underlying image file is out of scope; swap it by removing the artwork and adding a new one (Storage's `artwork_images_update_own` policy stays unexercised, as `0003_artwork_storage.sql`'s own comments already anticipated). A museum can never be edited down to zero artwork -- deleting a museum's last remaining artwork is refused (`400`), matching the create flow's own "at least one artwork" minimum. Every save on the edit page (museum metadata, the publish toggle, each artwork row, add-artwork) is independent, with its own loading/success/error state, rather than one unified "Save changes" for the whole page.
+
+New files: `app/dashboard/[museumId]/edit/page.tsx`; `app/api/museums/[museumId]/artworks/route.ts` (add) and `app/api/museums/[museumId]/artworks/[artworkId]/route.ts` (edit/remove); `server/museumLayout.ts`; `components/dashboard/edit/` (`EditMuseumMetadataForm`, `PublishToggle`, `EditArtworkRow`, `AddArtworkForm`); `lib/site.ts`, `lib/museum/slug.ts`, `lib/artwork/clientCompress.ts` (small helpers extracted out of the original create flow so it and the new edit flow share one implementation instead of two). `app/api/museums/[museumId]/route.ts` gained a `PATCH` handler alongside its existing owner-only `DELETE`.
 
 ---
 
@@ -279,6 +311,27 @@ What this does **not** claim: no automated (Playwright) coverage of the auth/das
 
 **What this round did *not* separately exercise** (reasoned about and covered by policy/code review -- see "Artwork storage" above -- but not independently clicked/queried through): the non-3D grid/modal view rendering the same uploaded artwork (same `imageUrl`/signed-URL contract as the 3D path, not re-tested here); extreme aspect ratios (very wide/very tall uploads) actually rendering uncropped; a direct Storage-API upload attempt into another user's `museum_id` segment from within one's own UUID prefix (the `artworks`-table-level cross-user attempt above was tested directly; the Storage-level equivalent was reasoned through instead -- see "The responsibility split, and why it exists" above for why such an object would be an inert, unreachable orphan even if the upload itself succeeded); signed-URL expiry actually occurring after 15 minutes; the upload-size/type rejection paths (oversized file, oversized request, wrong MIME type) actually triggering their 413/400 responses; and a partial-failure rollback (e.g. the second of two images failing mid-upload) actually cleaning up correctly. None of this has automated (Playwright or otherwise) coverage yet, matching the rest of this section.
 
+**Creator editing & museum management (Phase 3: `/dashboard/[museumId]/edit`, artwork add/edit/remove, relayout, share links) -- manually verified end to end against a real Supabase project:**
+
+- Dashboard Published/Private badges match each museum's real `is_published` state -- **PASS**
+- Edit Museum navigation from the dashboard, owner-only -- **PASS**
+- Museum name/description/theme edits save and render correctly -- **PASS**
+- The museum's permanent `/museum/[museumId]` URL stays stable across every edit above -- **PASS**
+- Copy Link produces a working `http://localhost:3000/museum/...` link in local dev -- **PASS**
+- View Museum opens the live museum correctly -- **PASS**
+- The owner can view their own private (unpublished) museum -- **PASS**
+- An anonymous/incognito visitor cannot view that same private museum -- **PASS**
+- Switching a museum back to Published restores public access -- **PASS**
+- Artwork metadata edits (title/artist/year/medium/description/alt text) save and render correctly -- **PASS**
+- Adding a new artwork to an existing museum succeeds -- **PASS**
+- The added artwork persists in both Storage and the `artworks` table and renders correctly in the live 3D room -- **PASS**
+- Removing an individual artwork succeeds -- **PASS**
+- The removed artwork's row and its Storage object are both actually gone afterward -- **PASS**
+- The remaining artwork's layout is correctly recomputed (relayout) after an add or remove -- **PASS**
+- A second, different authenticated user cannot access the first user's private museum or its edit experience -- **PASS**
+
+This directly re-verifies, against the live edit flow rather than only via policy/code review, the same ownership and visibility guarantees the Phase 2 verification above established for creation/deletion -- ownership enforcement, publish/private visibility, and Storage cleanup all hold under editing too, not just under create-once/delete-outright. The Copy Link fix specifically was caught by this manual pass: an earlier version copied a link built from a hard-coded placeholder domain instead of the browser's real origin, which produced a dead link in every environment, dev or production, until it was pointed at `window.location.origin` instead (see "Creator editing & museum management" above). What this round did not separately exercise: automated (Playwright or otherwise) coverage of any of the above, a concurrent-edit race between two tabs/sessions, and signed-URL-expiry timing during an edit session -- reasoned about and covered by design/code review, matching how the rest of this document distinguishes what was actually run from what was reasoned through.
+
 ---
 
 ## Deployment
@@ -301,6 +354,7 @@ The app is one Node process (`server.mjs`) serving both Next.js and Socket.IO, s
 | `PORT` | HTTP port the custom server listens on | No | `3000` |
 | `CLIENT_ORIGIN` | CORS origin allowed to connect via Socket.IO | No | `*` |
 | `NEXT_PUBLIC_SOCKET_URL` | Only needed if the realtime server is deployed **separately** from the Next.js frontend | No | same-origin |
+| `NEXT_PUBLIC_SITE_URL` | Absolute site origin used only for server-only metadata (Next's `metadataBase`, see "Creator editing & museum management") -- never for navigation or the Copy Link share button, both of which always resolve the browser's real `window.location.origin` instead | No | placeholder domain |
 
 No service-role/admin Supabase key is used anywhere in this app. If you split the frontend (e.g. static hosting) from the realtime server, set `NEXT_PUBLIC_SOCKET_URL` on the frontend build and `CLIENT_ORIGIN` on the server so CORS allows it.
 
@@ -327,11 +381,11 @@ See [`case-study-assets/README.md`](./case-study-assets/) for a shot list and ca
 ## Product scope
 
 ### Implemented
-Branded landing page · demo artist profile · museum preview/share page · shareable `/museum/[id]` route · a five-room hand-designed museum with per-room themes, auto-placed furnishings, and varied frame sizes · third-person movement with camera-relative controls and multi-room wall/doorway collision · original stylized avatar with idle/walk animation and a tapered, jointed arm chain · avatar editor (skin tone, 3 hairstyles, hair color, top, bottom, shoes, accessory, `localStorage`-persisted, live 3D preview) · artwork interaction prompts with a dedicated trigger key · focused artwork view with looping previous/next and position indicator · accessible non-3D artwork grid · live multiplayer avatars with join/leave/interpolation/throttling, session-based reconnect dedup, and per-museum room isolation · visitor count and presence panel · a full "create your own museum" upload flow (client-side compression, server-side `sharp` validation, theme picker, auto-generated single-room layout, shareable link) · real creator accounts (Supabase Auth, email confirmation, persistent sessions) · Postgres-backed museum storage with Row Level Security enforcing per-owner create/update/delete and published-or-owner-only read · a `/dashboard` listing a signed-in creator's own museums, including a delete-museum action · per-museum publish/draft visibility (`is_published`, enforced at the database layer, not just in application code) · a private Supabase Storage bucket + real `artworks` table for uploaded images, with short-lived signed URLs, database-enforced ownership, layered upload-size/type limits, and failure-safe DB-first deletion (see "Artwork storage") · loading/error/not-found states on every dynamic route · responsive layouts for every non-3D screen · accessibility fundamentals (focus trap, keyboard operability, reduced motion, alt text) · deployment configuration and docs.
+Branded landing page · demo artist profile · museum preview/share page · shareable `/museum/[id]` route · a five-room hand-designed museum with per-room themes, auto-placed furnishings, and varied frame sizes · third-person movement with camera-relative controls and multi-room wall/doorway collision · original stylized avatar with idle/walk animation and a tapered, jointed arm chain · avatar editor (skin tone, 3 hairstyles, hair color, top, bottom, shoes, accessory, `localStorage`-persisted, live 3D preview) · artwork interaction prompts with a dedicated trigger key · focused artwork view with looping previous/next and position indicator · accessible non-3D artwork grid · live multiplayer avatars with join/leave/interpolation/throttling, session-based reconnect dedup, and per-museum room isolation · visitor count and presence panel · a full "create your own museum" upload flow (client-side compression, server-side `sharp` validation, theme picker, auto-generated single-room layout, shareable link) · real creator accounts (Supabase Auth, email confirmation, persistent sessions) · Postgres-backed museum storage with Row Level Security enforcing per-owner create/update/delete and published-or-owner-only read · a `/dashboard` listing a signed-in creator's own museums, including a delete-museum action · per-museum publish/draft visibility (`is_published`, enforced at the database layer, not just in application code) · a private Supabase Storage bucket + real `artworks` table for uploaded images, with short-lived signed URLs, database-enforced ownership, layered upload-size/type limits, and failure-safe DB-first deletion (see "Artwork storage") · owner-only creator editing and museum management (`/dashboard/[museumId]/edit`): museum name/description/theme editing, a Published/Private toggle, per-artwork metadata editing, artwork removal with Storage cleanup, adding new artwork to an existing museum via the same secure upload path, and an automatic server-side layout recompute after any artwork add/remove, all without a new migration (see "Creator editing & museum management") · a View Museum / Copy Link share affordance on the dashboard and edit page that resolves the browser's real running origin rather than a hard-coded domain · loading/error/not-found states on every dynamic route · responsive layouts for every non-3D screen · accessibility fundamentals (focus trap, keyboard operability, reduced motion, alt text) · deployment configuration and docs.
 
 ### Not implemented (by design, for this prototype)
-Any UI to edit a museum after it's created beyond deleting it outright, including a publish/unpublish toggle (the `is_published` flag exists and is enforced by RLS, but nothing in the UI sets it yet) · adding/removing individual artwork from an existing museum (the artwork RLS already supports it -- see "Artwork storage" -- but the create flow is still one-shot, matching the original prototype's scope) · drag-and-drop gallery editing or a visual room editor · multiple room-shape templates (custom museums get one auto-sized room, not the demo's five-room layout) · likes/comments/following/messaging/voice chat · payments or art sales · a moderation system · events · multiple floors · a custom architecture/furniture editor · VR · analytics/usage tracking. These are all real product directions -- see below -- deliberately deferred so this work could go deep on accounts/ownership/data first, matching this repo's own phased approach.
+Replacing an existing artwork's underlying image file in place (Phase 3's artwork editing is text metadata only -- swap the image by removing the artwork and adding a new one; Storage's `artwork_images_update_own` policy exists but stays unexercised) · drag-and-drop gallery editing or a visual room editor (artwork placement is always auto-computed server-side after an add/remove, never manual -- see "Creator editing & museum management") · multiple room-shape templates (custom museums get one auto-sized room, not the demo's five-room layout) · likes/comments/following/messaging/voice chat · payments or art sales · a moderation system · events · multiple floors · a custom architecture/furniture editor · VR · analytics/usage tracking. These are all real product directions -- see below -- deliberately deferred so this work could go deep on accounts/ownership/data and, now, creator editing first, matching this repo's own phased approach.
 
 ## Future product vision
 
-If this moved past prototype: a UI for editing a museum after creation, including a publish/unpublish control building on the `is_published` column that already exists, and adding/removing individual artwork from an existing museum (building on the per-artwork RLS that already exists); multiple room-shape templates and simple architectural customization for user-created museums, not just the auto-sized single room; drag-and-drop rearrangement of artwork on the walls; usage analytics; a "you were here" visit history for artists to see who's stopped by; light social features (following an artist, a comment left in a guestbook-style panel rather than inline chat); and eventually multiple rooms/floors per user museum as a portfolio grows, matching what the demo museum already shows is possible. Not committed to VR, but the avatar and room system were designed so a future VR mode wouldn't require starting over.
+If this moved past prototype: in-place replacement of an existing artwork's image file, building on the `artwork_images_update_own` Storage policy that already exists but is unexercised; multiple room-shape templates and simple architectural customization for user-created museums, not just the auto-sized single room; drag-and-drop rearrangement of artwork on the walls, as a manual layer on top of the automatic relayout Phase 3 already does; usage analytics; a "you were here" visit history for artists to see who's stopped by; light social features (following an artist, a comment left in a guestbook-style panel rather than inline chat); and eventually multiple rooms/floors per user museum as a portfolio grows, matching what the demo museum already shows is possible. Not committed to VR, but the avatar and room system were designed so a future VR mode wouldn't require starting over.

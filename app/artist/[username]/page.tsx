@@ -15,8 +15,6 @@ function getArtist(username: string) {
   return DEMO_ARTIST;
 }
 
-const SITE_URL = "https://mymuseum.example.com";
-
 export async function generateMetadata({
   params,
 }: {
@@ -43,7 +41,7 @@ export default async function ArtistProfilePage({
   if (!artist) notFound();
 
   const museum = DEMO_MUSEUM;
-  const museumUrl = `${SITE_URL}/museum/${museum.id}`;
+  const museumPath = `/museum/${museum.id}`;
 
   return (
     <>
@@ -81,8 +79,8 @@ export default async function ArtistProfilePage({
               <LiveVisitorBadge museumId={museum.id} />
             </div>
             <div className="mt-6 flex flex-wrap gap-3">
-              <LinkButton href={`/museum/${museum.id}`}>Enter Museum</LinkButton>
-              <CopyLinkButton url={museumUrl} />
+              <LinkButton href={museumPath}>Enter Museum</LinkButton>
+              <CopyLinkButton path={museumPath} />
             </div>
           </div>
         </section>

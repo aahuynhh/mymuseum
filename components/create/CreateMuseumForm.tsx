@@ -3,51 +3,14 @@
 import { useEffect, useRef, useState } from "react";
 import { GALLERY_THEME_LIST, type GalleryThemeId } from "@/game/museum/themes";
 import { MAX_ARTWORKS_PER_MUSEUM } from "@/lib/artwork/limits";
+import { compressImage } from "@/lib/artwork/clientCompress";
 import { OptionGroup } from "@/components/avatar/OptionGroup";
 import { Button, LinkButton } from "@/components/ui/Button";
 import { CopyLinkButton } from "@/components/museum/CopyLinkButton";
 import { ArtworkDraftItem, type DraftArtwork } from "./ArtworkDraftItem";
 
-const MAX_IMAGE_DIMENSION = 1200;
-const JPEG_QUALITY = 0.82;
-const SITE_URL = "https://mymuseum.example.com";
-
 function randomId() {
   return Math.random().toString(36).slice(2, 10);
-}
-
-function canvasToBlob(canvas: HTMLCanvasElement, type: string, quality: number): Promise<Blob> {
-  return new Promise((resolve, reject) => {
-    canvas.toBlob(
-      (blob) => (blob ? resolve(blob) : reject(new Error("Couldn't encode image"))),
-      type,
-      quality
-    );
-  });
-}
-
-/** Resizes/re-encodes client-side purely for upload bandwidth and preview
- * consistency -- never trusted for security. The server (sharp) re-derives
- * real type/dimensions from the bytes it actually receives. */
-async function compressImage(
-  file: File
-): Promise<{ blob: Blob; imageAspectRatio: number }> {
-  const bitmap = await createImageBitmap(file);
-  const scale = Math.min(1, MAX_IMAGE_DIMENSION / Math.max(bitmap.width, bitmap.height));
-  const width = Math.max(1, Math.round(bitmap.width * scale));
-  const height = Math.max(1, Math.round(bitmap.height * scale));
-  const imageAspectRatio = bitmap.width / bitmap.height;
-
-  const canvas = document.createElement("canvas");
-  canvas.width = width;
-  canvas.height = height;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) throw new Error("Canvas not supported");
-  ctx.drawImage(bitmap, 0, 0, width, height);
-  bitmap.close?.();
-
-  const blob = await canvasToBlob(canvas, "image/jpeg", JPEG_QUALITY);
-  return { blob, imageAspectRatio };
 }
 
 type SubmitState =
@@ -180,7 +143,7 @@ export function CreateMuseumForm() {
   }
 
   if (submitState.status === "success") {
-    const museumUrl = `${SITE_URL}/museum/${submitState.museumId}`;
+    const museumPath = `/museum/${submitState.museumId}`;
     return (
       <div className="rounded-[1.75rem] border border-border/70 bg-surface p-8 text-center shadow-warm-sm sm:p-12">
         <p className="font-display text-sm italic text-terracotta-dark">Your museum is ready</p>
@@ -190,10 +153,10 @@ export function CreateMuseumForm() {
           else is visiting, just like the demo museum.
         </p>
         <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
-          <LinkButton href={`/museum/${submitState.museumId}`} size="lg">
+          <LinkButton href={museumPath} size="lg">
             Enter Museum
           </LinkButton>
-          <CopyLinkButton url={museumUrl} />
+          <CopyLinkButton path={museumPath} />
         </div>
         <p className="mx-auto mt-6 max-w-sm text-xs text-ink-muted">
           Prototype note: this museum is saved on this demo server, not in a production database
