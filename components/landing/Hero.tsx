@@ -74,7 +74,7 @@ export function Hero() {
               size="lg"
               className="!px-9 !py-3.5 !text-[1.02rem] shadow-[0_20px_40px_-12px_rgba(70,89,107,0.55)] ring-4 ring-dusty-blue/25 hover:ring-dusty-blue/35"
             >
-              Enter Alayna's Museum
+              Enter Alayna&apos;s Museum
             </LinkButton>
             <LinkButton
               href="/avatar"

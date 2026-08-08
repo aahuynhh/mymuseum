@@ -7,7 +7,16 @@ interface DraftArtwork {
   description: string;
   medium: string;
   year: string;
-  imageDataUrl: string;
+  /** Client-compressed image, sent as real bytes (not base64) on submit.
+   * Server-side validation (sharp) is the actual authority on type/size/
+   * dimensions -- this is a bandwidth/UX optimization only. */
+  imageBlob: Blob;
+  /** Object URL for the local preview only -- revoked by the parent form
+   * when this draft is removed or replaced. */
+  previewUrl: string;
+  /** Client-estimated aspect ratio, shown immediately in the preview.
+   * Not trusted server-side -- the server re-derives it from the real
+   * uploaded bytes. */
   imageAspectRatio: number;
 }
 
@@ -23,7 +32,7 @@ export function ArtworkDraftItem({ artwork, index, onChange, onRemove }: Artwork
     <li className="flex flex-col gap-4 rounded-2xl border border-border/70 bg-surface p-4 shadow-warm-xs sm:flex-row sm:p-5">
       <div className="h-32 w-full shrink-0 overflow-hidden rounded-xl border border-border/60 bg-canvas-deep sm:w-32">
         {/* Client-provided preview of the visitor's own upload, not a demo asset */}
-        <img src={artwork.imageDataUrl} alt="" className="h-full w-full object-cover" />
+        <img src={artwork.previewUrl} alt="" className="h-full w-full object-cover" />
       </div>
       <div className="flex flex-1 flex-col gap-3">
         <div className="flex items-center justify-between gap-3">

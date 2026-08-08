@@ -1,0 +1,40 @@
+-- MyMuseum: Phase 2 cleanup -- drop the legacy base64-in-jsonb artwork column
+--
+-- DEFERRED. This file lives outside supabase/migrations/ on purpose, so it
+-- is never picked up by `supabase db push`, `supabase db reset`, CI, or a
+-- future automated deployment -- all of which replay every file in
+-- supabase/migrations/ in order. This is not an active migration; it is
+-- approved, reviewed SQL waiting on a deliberate decision to run it.
+--
+-- (Formerly supabase/migrations/0007_drop_legacy_artwork_jsonb.sql --
+-- renumbered three times during Phase 2 while artwork_images_insert_own/
+-- _select_owner_or_published were being debugged against a real upload:
+-- 0004 -> 0005 -> 0006 -> 0007, to keep making room ahead of it for the
+-- hotfix migrations that turned out to be necessary. Moved here, out of
+-- the numbered sequence entirely, once it became clear that anything left
+-- in supabase/migrations/ -- run or not, applied by hand via the SQL
+-- Editor or not -- is a candidate for being replayed by tooling that
+-- doesn't know which files were actually applied where.)
+--
+-- DO NOT RUN THIS until:
+--   1. supabase/migrations/0003_artwork_storage.sql (and, for a database
+--      that had the earlier buggy version of it applied, 0004-0006) have
+--      been applied,
+--   2. the create/read/render/delete flow has been manually verified end
+--      to end against that database (see README.md "How this was
+--      verified" for what was actually checked), and
+--   3. this file has been deliberately reviewed and approved to run --
+--      not swept up by a routine `db push`/`db reset`.
+--
+-- Until then, museums.artworks is an inert rollback fallback -- application
+-- code no longer reads or writes it as of 0003, but the column staying in
+-- place costs nothing and preserves the ability to recover if the new flow
+-- turns out to have a problem only discoverable in production.
+--
+-- To actually run this when ready: paste it into the Supabase SQL editor
+-- directly, or deliberately copy it back into supabase/migrations/ under a
+-- fresh, correctly-ordered number first. Do not move it back into
+-- supabase/migrations/ under its old name/number without re-checking what
+-- migration numbers are already in use by then.
+
+alter table public.museums drop column artworks;

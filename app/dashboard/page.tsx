@@ -4,6 +4,7 @@ import { SiteFooter } from "@/components/ui/SiteFooter";
 import { LinkButton } from "@/components/ui/Button";
 import { getCurrentUser } from "@/lib/supabase/server";
 import { getMuseumSummariesForOwner } from "@/server/museumsRepository";
+import { DeleteMuseumButton } from "@/components/dashboard/DeleteMuseumButton";
 
 export const metadata: Metadata = {
   title: "My Museums",
@@ -97,9 +98,12 @@ async function DashboardContent({ ownerId }: { ownerId: string }) {
                 )}
                 <p className="mt-2 text-xs text-ink-muted">Created {formatDate(museum.createdAt)}</p>
               </div>
-              <LinkButton href={`/museum/${museum.id}`} variant="secondary">
-                Open Museum
-              </LinkButton>
+              <div className="flex flex-col items-end gap-3">
+                <LinkButton href={`/museum/${museum.id}`} variant="secondary">
+                  Open Museum
+                </LinkButton>
+                <DeleteMuseumButton museumId={museum.id} museumName={museum.name} />
+              </div>
             </li>
           ))}
         </ul>

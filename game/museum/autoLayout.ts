@@ -10,9 +10,15 @@ export interface UploadedArtworkInput {
   medium: string;
   description: string;
   altText: string;
+  /** Phase 2: this is the artwork's Storage path ("{ownerId}/{museumId}/
+   * {artworkId}.{ext}"), not a data URL or a real fetchable URL -- layout
+   * math here never reads it, only copies it through onto the returned
+   * Artwork. The repository layer (server/artworksRepository.ts) is what
+   * resolves a real, short-lived signed URL at read time. */
   imageUrl: string;
   /** Source image width / height, used to size the frame without cropping or
-   * stretching the uploaded image. */
+   * stretching the uploaded image. Server-derived (sharp), never trusted
+   * from the client. */
   imageAspectRatio: number;
 }
 

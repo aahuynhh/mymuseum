@@ -18,6 +18,29 @@ const dev = process.env.NODE_ENV !== "production";
 const app = next({ dev });
 const handle = app.getRequestHandler();
 
+// Must match MAX_TOTAL_REQUEST_BYTES in lib/artwork/limits.ts. Duplicated
+// by hand rather than imported -- this file runs directly under Node,
+// outside the Next.js/TypeScript build, the same reason sanitizeString/
+// sanitizeVector3 below are reimplemented rather than shared with game/.
+const MAX_UPLOAD_REQUEST_BYTES = 60 * 1024 * 1024; // 60 MB
+
+/**
+ * Cheap, spoofable fast path: rejects an obviously-oversized museum-upload
+ * request via its Content-Length header before Next.js (and the real,
+ * byte-counted streaming enforcement in app/api/museums/route.ts) ever
+ * runs. Content-Length is client-supplied and can be absent or wrong, so
+ * this is a defense-in-depth optimization, not the security boundary.
+ */
+function rejectOversizedUpload(req, res) {
+  if (req.method !== "POST" || !req.url || !req.url.startsWith("/api/museums")) return false;
+  const contentLength = Number(req.headers["content-length"] || 0);
+  if (contentLength <= MAX_UPLOAD_REQUEST_BYTES) return false;
+
+  res.writeHead(413, { "Content-Type": "application/json" });
+  res.end(JSON.stringify({ error: "Upload is too large." }));
+  return true;
+}
+
 // museumId -> Map<socketId, Player>
 const rooms = new Map();
 
@@ -57,7 +80,10 @@ function removeStaleSessionEntries(io, museumId, room, sessionId, currentSocketI
 }
 
 app.prepare().then(() => {
-  const httpServer = createServer(handle);
+  const httpServer = createServer((req, res) => {
+    if (rejectOversizedUpload(req, res)) return;
+    handle(req, res);
+  });
   const io = new Server(httpServer, {
     cors: { origin: process.env.CLIENT_ORIGIN || "*" },
   });

@@ -1,13 +1,13 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { GALLERY_THEME_LIST, type GalleryThemeId } from "@/game/museum/themes";
+import { MAX_ARTWORKS_PER_MUSEUM } from "@/lib/artwork/limits";
 import { OptionGroup } from "@/components/avatar/OptionGroup";
 import { Button, LinkButton } from "@/components/ui/Button";
 import { CopyLinkButton } from "@/components/museum/CopyLinkButton";
 import { ArtworkDraftItem, type DraftArtwork } from "./ArtworkDraftItem";
 
-const MAX_ARTWORKS = 10;
 const MAX_IMAGE_DIMENSION = 1200;
 const JPEG_QUALITY = 0.82;
 const SITE_URL = "https://mymuseum.example.com";
@@ -16,9 +16,22 @@ function randomId() {
   return Math.random().toString(36).slice(2, 10);
 }
 
-async function compressImageToDataUrl(
+function canvasToBlob(canvas: HTMLCanvasElement, type: string, quality: number): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob(
+      (blob) => (blob ? resolve(blob) : reject(new Error("Couldn't encode image"))),
+      type,
+      quality
+    );
+  });
+}
+
+/** Resizes/re-encodes client-side purely for upload bandwidth and preview
+ * consistency -- never trusted for security. The server (sharp) re-derives
+ * real type/dimensions from the bytes it actually receives. */
+async function compressImage(
   file: File
-): Promise<{ imageDataUrl: string; imageAspectRatio: number }> {
+): Promise<{ blob: Blob; imageAspectRatio: number }> {
   const bitmap = await createImageBitmap(file);
   const scale = Math.min(1, MAX_IMAGE_DIMENSION / Math.max(bitmap.width, bitmap.height));
   const width = Math.max(1, Math.round(bitmap.width * scale));
@@ -33,12 +46,13 @@ async function compressImageToDataUrl(
   ctx.drawImage(bitmap, 0, 0, width, height);
   bitmap.close?.();
 
-  return { imageDataUrl: canvas.toDataURL("image/jpeg", JPEG_QUALITY), imageAspectRatio };
+  const blob = await canvasToBlob(canvas, "image/jpeg", JPEG_QUALITY);
+  return { blob, imageAspectRatio };
 }
 
 type SubmitState =
   | { status: "idle" }
-  | { status: "submitting" }
+  | { status: "uploading" }
   | { status: "error"; message: string }
   | { status: "success"; museumId: string };
 
@@ -49,29 +63,46 @@ export function CreateMuseumForm() {
   const [artworks, setArtworks] = useState<DraftArtwork[]>([]);
   const [primaryArtist, setPrimaryArtist] = useState("");
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [isPreparingFiles, setIsPreparingFiles] = useState(false);
   const [submitState, setSubmitState] = useState<SubmitState>({ status: "idle" });
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Object URLs (components/create/ArtworkDraftItem.tsx previews) aren't
+  // released automatically -- revoke every one still outstanding on unmount
+  // so a long create session doesn't leak memory. Kept in a ref (synced via
+  // its own effect, never written during render) so the unmount cleanup
+  // below only needs to run once and always sees the latest list.
+  const artworksRef = useRef<DraftArtwork[]>([]);
+  useEffect(() => {
+    artworksRef.current = artworks;
+  }, [artworks]);
+  useEffect(() => {
+    return () => {
+      artworksRef.current.forEach((a) => URL.revokeObjectURL(a.previewUrl));
+    };
+  }, []);
 
   async function handleFilesSelected(files: FileList | null) {
     if (!files || files.length === 0) return;
     setUploadError(null);
 
-    const remaining = MAX_ARTWORKS - artworks.length;
+    const remaining = MAX_ARTWORKS_PER_MUSEUM - artworks.length;
     if (remaining <= 0) {
-      setUploadError(`This prototype supports up to ${MAX_ARTWORKS} artworks per museum.`);
+      setUploadError(`This prototype supports up to ${MAX_ARTWORKS_PER_MUSEUM} artworks per museum.`);
       return;
     }
 
     const selected = Array.from(files).slice(0, remaining);
     const currentYear = String(new Date().getFullYear());
 
+    setIsPreparingFiles(true);
     for (const file of selected) {
       if (!["image/png", "image/jpeg", "image/webp", "image/gif"].includes(file.type)) {
         setUploadError("Please use a PNG, JPEG, WebP, or GIF image.");
         continue;
       }
       try {
-        const { imageDataUrl, imageAspectRatio } = await compressImageToDataUrl(file);
+        const { blob, imageAspectRatio } = await compressImage(file);
         setArtworks((prev) => [
           ...prev,
           {
@@ -81,7 +112,8 @@ export function CreateMuseumForm() {
             description: "",
             medium: "",
             year: currentYear,
-            imageDataUrl,
+            imageBlob: blob,
+            previewUrl: URL.createObjectURL(blob),
             imageAspectRatio,
           },
         ]);
@@ -89,6 +121,7 @@ export function CreateMuseumForm() {
         setUploadError(`Couldn't process "${file.name}". Try a different image.`);
       }
     }
+    setIsPreparingFiles(false);
   }
 
   function updateArtwork(id: string, patch: Partial<DraftArtwork>) {
@@ -96,7 +129,11 @@ export function CreateMuseumForm() {
   }
 
   function removeArtwork(id: string) {
-    setArtworks((prev) => prev.filter((a) => a.id !== id));
+    setArtworks((prev) => {
+      const removed = prev.find((a) => a.id === id);
+      if (removed) URL.revokeObjectURL(removed.previewUrl);
+      return prev.filter((a) => a.id !== id);
+    });
   }
 
   const canSubmit =
@@ -107,29 +144,31 @@ export function CreateMuseumForm() {
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
     if (!canSubmit) return;
-    setSubmitState({ status: "submitting" });
+    setSubmitState({ status: "uploading" });
+
+    const formData = new FormData();
+    formData.append(
+      "meta",
+      JSON.stringify({
+        name: name.trim(),
+        description: description.trim(),
+        theme,
+        artworks: artworks.map((a) => ({
+          title: a.title.trim(),
+          artist: a.artist.trim(),
+          description: a.description.trim(),
+          medium: a.medium.trim(),
+          year: a.year ? Number(a.year) : undefined,
+        })),
+      })
+    );
+    artworks.forEach((a, i) => {
+      formData.append(`image-${i}`, a.imageBlob, `artwork-${i}.jpg`);
+    });
 
     try {
-      const res = await fetch("/api/museums", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          name: name.trim(),
-          description: description.trim(),
-          theme,
-          artworks: artworks.map((a) => ({
-            title: a.title.trim(),
-            artist: a.artist.trim(),
-            description: a.description.trim(),
-            medium: a.medium.trim(),
-            year: a.year ? Number(a.year) : undefined,
-            imageDataUrl: a.imageDataUrl,
-            imageAspectRatio: a.imageAspectRatio,
-          })),
-        }),
-      });
-
-      const data = await res.json();
+      const res = await fetch("/api/museums", { method: "POST", body: formData });
+      const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         setSubmitState({ status: "error", message: data?.error || "Something went wrong." });
         return;
@@ -163,6 +202,8 @@ export function CreateMuseumForm() {
       </div>
     );
   }
+
+  const isUploading = submitState.status === "uploading";
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-10">
@@ -215,16 +256,16 @@ export function CreateMuseumForm() {
           <div>
             <h2 className="font-display text-xl text-ink">Artwork</h2>
             <p className="mt-1 text-sm text-ink-muted">
-              {artworks.length} of {MAX_ARTWORKS} added
+              {artworks.length} of {MAX_ARTWORKS_PER_MUSEUM} added
             </p>
           </div>
           <Button
             type="button"
             variant="secondary"
             onClick={() => fileInputRef.current?.click()}
-            disabled={artworks.length >= MAX_ARTWORKS}
+            disabled={artworks.length >= MAX_ARTWORKS_PER_MUSEUM || isPreparingFiles}
           >
-            Upload images
+            {isPreparingFiles ? "Preparing…" : "Upload images"}
           </Button>
           <input
             ref={fileInputRef}
@@ -267,10 +308,10 @@ export function CreateMuseumForm() {
       )}
 
       <div className="flex flex-wrap items-center gap-4 border-t border-border/70 pt-6">
-        <Button type="submit" size="lg" disabled={!canSubmit || submitState.status === "submitting"}>
-          {submitState.status === "submitting" ? "Creating your museum…" : "Create My Museum"}
+        <Button type="submit" size="lg" disabled={!canSubmit || isUploading}>
+          {isUploading ? "Uploading your museum…" : "Create My Museum"}
         </Button>
-        {!canSubmit && (
+        {!canSubmit && !isUploading && (
           <p className="text-xs text-ink-muted">
             Add a museum name and at least one artwork (with a title and artist) to continue.
           </p>
