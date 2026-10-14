@@ -85,7 +85,12 @@ export function PlayerController({
       setAnimationState(nextAnimState);
     }
 
-    const camTarget = computeCameraTarget(positionRef.current, orbitRef.current, museum.rooms);
+    const camTarget = computeCameraTarget(
+      positionRef.current,
+      orbitRef.current,
+      museum.rooms,
+      museum.openingConnectors
+    );
     if (!cameraInitialized.current) {
       camera.position.copy(camTarget.position);
       lookAtRef.current.copy(camTarget.lookAt);

@@ -35,7 +35,7 @@ export function ArtworkGrid({ artworks, onSelect }: ArtworkGridProps) {
               </span>
             </span>
             <span className="flex flex-1 flex-col gap-1 p-4">
-              <span className="font-display text-lg text-ink">{artwork.title}</span>
+              <span className="font-heading text-lg text-ink">{artwork.title}</span>
               <span className="text-sm text-ink-muted">
                 {artwork.artist} · {artwork.year}
               </span>

@@ -5,7 +5,7 @@ import { GALLERY_THEME_LIST, type GalleryThemeId } from "@/game/museum/themes";
 import { MAX_ARTWORKS_PER_MUSEUM } from "@/lib/artwork/limits";
 import { compressImage } from "@/lib/artwork/clientCompress";
 import { OptionGroup } from "@/components/avatar/OptionGroup";
-import { LinkButton } from "@/components/ui/Button";
+import { Button, LinkButton } from "@/components/ui/Button";
 import { TextField, TextAreaField } from "@/components/ui/Field";
 import { CopyLinkButton } from "@/components/museum/CopyLinkButton";
 import { cn } from "@/utils/cn";
@@ -104,7 +104,7 @@ function UploadDropzone({
         <UploadDropIcon />
       </span>
       <div>
-        <p className={cn("font-display text-ink", compact ? "text-base" : "text-xl")}>
+        <p className={cn("font-heading text-ink", compact ? "text-base" : "text-xl")}>
           {preparing ? "Preparing…" : "Drag images here, or click to browse"}
         </p>
         {!compact && (
@@ -129,6 +129,10 @@ export function CreateMuseumForm() {
   const [theme, setTheme] = useState<GalleryThemeId>("linen");
   const [artworks, setArtworks] = useState<DraftArtwork[]>([]);
   const [primaryArtist, setPrimaryArtist] = useState("");
+  // Draft-local id of the artwork picked as cover thumbnail. `null` means
+  // "no explicit pick yet" -- falls back to the first artwork, same default
+  // the dashboard's CoverArtworkPicker uses post-creation.
+  const [coverId, setCoverId] = useState<string | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
   const [isPreparingFiles, setIsPreparingFiles] = useState(false);
   const [submitState, setSubmitState] = useState<SubmitState>({ status: "idle" });
@@ -201,6 +205,7 @@ export function CreateMuseumForm() {
       if (removed) URL.revokeObjectURL(removed.previewUrl);
       return prev.filter((a) => a.id !== id);
     });
+    setCoverId((prev) => (prev === id ? null : prev));
   }
 
   const canSubmit =
@@ -213,6 +218,8 @@ export function CreateMuseumForm() {
     if (!canSubmit) return;
     setSubmitState({ status: "uploading" });
 
+    const coverArtworkIndex = coverId ? artworks.findIndex((a) => a.id === coverId) : -1;
+
     const formData = new FormData();
     formData.append(
       "meta",
@@ -220,6 +227,7 @@ export function CreateMuseumForm() {
         name: name.trim(),
         description: description.trim(),
         theme,
+        coverArtworkIndex: coverArtworkIndex >= 0 ? coverArtworkIndex : undefined,
         artworks: artworks.map((a) => ({
           title: a.title.trim(),
           artist: a.artist.trim(),
@@ -251,7 +259,7 @@ export function CreateMuseumForm() {
     return (
       <div className="rounded-[1.75rem] border border-border/70 bg-surface p-8 text-center shadow-warm-sm sm:p-12">
         <p className="font-display text-sm italic text-terracotta-dark">Your museum is ready</p>
-        <h2 className="mt-2 font-display text-3xl text-ink">{name}</h2>
+        <h2 className="mt-2 font-heading text-3xl text-ink">{name}</h2>
         <p className="mx-auto mt-3 max-w-md text-ink-muted">
           It&apos;s live at a shareable link. Anyone who opens it can walk through it and see who
           else is visiting, just like the demo museum.
@@ -275,7 +283,7 @@ export function CreateMuseumForm() {
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-10">
       <section className="flex flex-col gap-5 rounded-[1.75rem] border border-border/70 bg-surface p-6 shadow-warm-sm sm:p-8">
-        <h2 className="font-display text-xl text-ink">About your museum</h2>
+        <h2 className="font-heading text-xl text-ink">About your museum</h2>
         <TextField
           label="Museum name"
           type="text"
@@ -310,53 +318,58 @@ export function CreateMuseumForm() {
       </section>
 
       <section className="flex flex-col gap-5">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <h2 className="font-display text-xl text-ink">Artwork</h2>
-            <p className="mt-1 text-sm text-ink-muted">
-              {artworks.length} of {MAX_ARTWORKS_PER_MUSEUM} added
-            </p>
-          </div>
-          <Button
-            type="button"
-            variant="secondary"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={artworks.length >= MAX_ARTWORKS_PER_MUSEUM || isPreparingFiles}
-          >
-            {isPreparingFiles ? "Preparing…" : "Upload images"}
-          </Button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/png,image/jpeg,image/webp,image/gif"
-            multiple
-            className="sr-only"
-            onChange={(e) => {
-              handleFilesSelected(e.target.files);
-              e.target.value = "";
-            }}
-          />
+        <div>
+          <h2 className="font-heading text-xl text-ink">Artwork</h2>
+          <p className="mt-1 text-sm text-ink-muted">
+            {artworks.length} of {MAX_ARTWORKS_PER_MUSEUM} added
+          </p>
         </div>
+
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept="image/png,image/jpeg,image/webp,image/gif"
+          multiple
+          className="sr-only"
+          onChange={(e) => {
+            handleFilesSelected(e.target.files);
+            e.target.value = "";
+          }}
+        />
 
         {uploadError && <p className="text-sm text-dusty-red-dark">{uploadError}</p>}
 
         {artworks.length === 0 ? (
-          <EmptyState
-            title="No artwork yet"
-            description="Upload a few images to start building your gallery."
+          <UploadDropzone
+            compact={false}
+            disabled={isPreparingFiles}
+            preparing={isPreparingFiles}
+            onFiles={handleFilesSelected}
+            fileInputRef={fileInputRef}
           />
         ) : (
-          <ul className="flex flex-col gap-4">
-            {artworks.map((artwork, index) => (
-              <ArtworkDraftItem
-                key={artwork.id}
-                artwork={artwork}
-                index={index}
-                onChange={updateArtwork}
-                onRemove={removeArtwork}
-              />
-            ))}
-          </ul>
+          <>
+            <ul className="flex flex-col gap-4">
+              {artworks.map((artwork, index) => (
+                <ArtworkDraftItem
+                  key={artwork.id}
+                  artwork={artwork}
+                  index={index}
+                  isCover={(coverId ?? artworks[0]?.id) === artwork.id}
+                  onChange={updateArtwork}
+                  onRemove={removeArtwork}
+                  onSetCover={setCoverId}
+                />
+              ))}
+            </ul>
+            <UploadDropzone
+              compact
+              disabled={artworks.length >= MAX_ARTWORKS_PER_MUSEUM || isPreparingFiles}
+              preparing={isPreparingFiles}
+              onFiles={handleFilesSelected}
+              fileInputRef={fileInputRef}
+            />
+          </>
         )}
       </section>
 

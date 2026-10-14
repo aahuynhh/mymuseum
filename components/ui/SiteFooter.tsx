@@ -1,50 +1,29 @@
-import Link from "next/link";
-import { Logo } from "./Logo";
-import { DEMO_ARTIST } from "@/data/demoArtist";
+import { LogoMark } from "./Logo";
 
-const linkClass = "text-ink-muted transition-colors duration-200 hover:text-terracotta-dark";
-
+/**
+ * A closing plaque, not a website footer -- the platform's real navigation
+ * lives in PlatformHud's fixed dock (Explore / My Museums / Create) and in
+ * FinalCta's own links just above, so this repeats none of it. Bottom
+ * padding is generous specifically to clear that fixed dock, which floats
+ * over every page including this one.
+ */
 export function SiteFooter() {
   return (
-    <footer className="border-t border-border bg-canvas-deep">
-      <div className="mx-auto flex w-full max-w-6xl flex-col gap-10 px-6 py-14 sm:flex-row sm:items-start sm:justify-between">
-        <div className="max-w-xs">
-          <Logo />
-          <p className="mt-4 font-display text-lg italic leading-snug text-ink/80">
-            &ldquo;Build a world for your work.&rdquo;
-          </p>
-          <p className="mt-3 text-sm leading-relaxed text-ink-muted">
-            A personal virtual museum for sharing art and creative portfolios -- walk through it,
-            or share it with a friend.
-          </p>
-        </div>
-        <div className="grid grid-cols-2 gap-10 text-sm sm:flex sm:gap-16">
-          <div className="flex flex-col gap-3">
-            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-ink/60">Explore</p>
-            <Link href={`/artist/${DEMO_ARTIST.username}`} className={linkClass}>
-              Demo artist
-            </Link>
-            <Link href="/museum/demo-artist" className={linkClass}>
-              Demo museum
-            </Link>
-            <Link href={`/artist/${DEMO_ARTIST.username}#grid`} className={linkClass}>
-              Artwork grid
-            </Link>
-          </div>
-          <div className="flex flex-col gap-3">
-            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-ink/60">You</p>
-            <Link href="/avatar" className={linkClass}>
-              Customize avatar
-            </Link>
-            <Link href="/create" className={linkClass}>
-              Create My Museum
-            </Link>
-          </div>
-        </div>
-      </div>
-      <div className="rule-dotted mx-6" />
-      <div className="px-6 py-5 text-center text-xs text-ink-muted">
-        MyMuseum is a portfolio prototype. Artwork shown is original work by Alayna Huynh.
+    <footer className="bg-surface">
+      <div className="mx-auto flex max-w-sm flex-col items-center gap-3 px-6 pt-14 pb-24 text-center sm:pb-28">
+        <span className="inline-flex items-center gap-2 opacity-80">
+          <LogoMark className="h-6 w-auto" />
+          <span className="font-heading text-sm font-medium tracking-tight text-ink-muted">
+            MyMuseum
+          </span>
+        </span>
+        <p className="font-display text-sm italic text-ink-muted">
+          &ldquo;Build a world for your work.&rdquo;
+        </p>
+        <div className="rule-dotted mt-1 w-10" aria-hidden="true" />
+        <p className="text-xs text-ink-muted/75">
+          A prototype platform for building and exploring virtual museums.
+        </p>
       </div>
     </footer>
   );

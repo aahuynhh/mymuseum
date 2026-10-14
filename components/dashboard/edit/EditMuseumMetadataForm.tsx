@@ -69,7 +69,7 @@ export function EditMuseumMetadataForm({
 
   return (
     <section className="flex flex-col gap-5 rounded-[1.75rem] border border-border/70 bg-surface p-6 shadow-warm-sm sm:p-8">
-      <h2 className="font-display text-xl text-ink">About your museum</h2>
+      <h2 className="font-heading text-xl text-ink">About your museum</h2>
       <TextField
         label="Museum name"
         type="text"

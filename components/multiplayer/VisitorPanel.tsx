@@ -32,7 +32,7 @@ export function VisitorPanel({
         <span
           aria-hidden="true"
           className={`h-2 w-2 rounded-full ${
-            status === "connected" ? "bg-sage" : "bg-flax"
+            status === "connected" ? "bg-sage" : "bg-antique-gold"
           }`}
         />
         {visitorCount} {visitorCount === 1 ? "visitor" : "visitors"}

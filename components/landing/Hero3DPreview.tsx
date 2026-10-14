@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useRef } from "react";
+import { Suspense, useEffect, useRef } from "react";
 import { Canvas, useFrame } from "@react-three/fiber";
 import { OrbitControls } from "@react-three/drei";
 import * as THREE from "three";
@@ -13,23 +13,27 @@ import { DEMO_ARTIST_AVATAR } from "@/data/demoArtist";
 import type { AvatarConfiguration } from "@/types";
 
 const VISITOR_CONFIG: AvatarConfiguration = {
-  skinTone: "porcelain",
-  hairStyle: "twin-buns",
+  bodyShape: "capsule",
+  skinTone: "sky",
+  hairStyle: "sprout",
   hairColor: "berry",
   top: "overall-set",
   bottom: "canvas-shorts",
   shoes: "garden-boots",
   accessory: "none",
+  expression: "excited",
 };
 
 const THIRD_CONFIG: AvatarConfiguration = {
-  skinTone: "cocoa",
-  hairStyle: "swoop",
+  bodyShape: "cone",
+  skinTone: "sage",
+  hairStyle: "spiky-hair",
   hairColor: "flax",
   top: "linen-shirt",
   bottom: "denim-skirt",
   shoes: "canvas-sneakers",
-  accessory: "tote-bag",
+  accessory: "square-glasses",
+  expression: "standard",
 };
 
 /**
@@ -172,12 +176,36 @@ const ORBIT_MIN_AZIMUTH = -1.9;
 const ORBIT_MAX_AZIMUTH = 2.5;
 
 /**
+ * Placed as a Suspense sibling alongside the museum's own textures/models
+ * inside the `<Suspense fallback={null}>` below -- React only mounts it
+ * once every other suspended child in that same boundary has actually
+ * resolved, so its mount is the one reliable signal that the room is ready
+ * to look at. Nothing to render (`fallback={null}` already handles the
+ * scene itself going invisible while loading); it only exists to fire
+ * `onReady` back out to the page-level loading gate (see HomeLoadingGate),
+ * which is what actually covers the screen while this is still loading --
+ * this component has no loading UI of its own.
+ */
+function LoadedSignal({ onReady }: { onReady: () => void }) {
+  useEffect(() => {
+    onReady();
+  }, [onReady]);
+  return null;
+}
+
+/**
  * The living "window" into the museum used by the landing hero. Framing
  * (the arched border, shadow, caption bar) lives in Hero.tsx so this
  * component can be dropped into any shaped container -- it only renders
  * the scene itself, filling its parent completely.
+ *
+ * `onReady` fires once every texture/model inside is actually loaded (see
+ * LoadedSignal) -- HomeLoadingGate is what covers the whole page (not just
+ * this component) with a loading screen until that fires or its own
+ * failsafe timer elapses, whichever comes first, so the header/nav chrome
+ * around this preview never appears before the preview itself can.
  */
-export function Hero3DPreview() {
+export function Hero3DPreview({ onReady }: { onReady: () => void }) {
   // Always animated, regardless of the visitor's OS-level reduced-motion
   // preference -- this is the marketing hero's core "living demo" pitch, so
   // it should keep moving the moment the page opens rather than sitting
@@ -206,6 +234,7 @@ export function Hero3DPreview() {
         <LivingGlow position={[-2.2, 1.8, -1.1]} color="#ffdfa8" animate={animate} phase={0} />
         <LivingGlow position={[1.6, 1.8, -2.7]} color="#ffe4b0" animate={animate} phase={3.4} />
         <Suspense fallback={null}>
+          <LoadedSignal onReady={onReady} />
           <MuseumRoom museum={DEMO_MUSEUM} />
           <group position={[-2.2, 0, -1.1]} rotation={[0, 0.6, 0]}>
             <AvatarModel config={DEMO_ARTIST_AVATAR} animationState="idle" animate={animate} />
@@ -239,8 +268,7 @@ export function Hero3DPreview() {
           autoRotateSpeed={0.6}
         />
       </Canvas>
-      <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-center justify-between bg-gradient-to-t from-ink/75 via-ink/20 to-transparent px-6 py-5 text-surface">
-        <span className="font-display text-sm italic">Artlane -- Alayna Huynh&apos;s museum</span>
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 flex items-center justify-end bg-gradient-to-t from-ink/75 via-ink/20 to-transparent px-6 py-5 text-surface">
         <span className="flex items-center gap-1.5 text-xs font-medium">
           <span className="relative flex h-1.5 w-1.5">
             <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-sage opacity-75 motion-reduce:hidden" />

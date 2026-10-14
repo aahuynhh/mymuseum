@@ -1,6 +1,6 @@
 import type { Artwork, GalleryRoom, Museum, WallSide } from "@/types";
 import type { GalleryThemeId } from "./themes";
-import { placeOnWall, wallSpan } from "./placement";
+import { placeOnWall, wallSegments, wallSpan, type WallSpanSegment } from "./placement";
 
 export interface UploadedArtworkInput {
   id: string;
@@ -142,48 +142,81 @@ function layoutWall(
 }
 
 /**
- * Builds a single, generously-proportioned gallery room sized to the
- * artwork count and auto-places pieces evenly across three walls (the
- * fourth holds the entrance). Used for user-created museums, where we don't
- * know the collection size ahead of time the way the hand-designed demo
- * floor plan does.
+ * Same idea as `layoutWall`, but across the (possibly two) solid segments a
+ * wall is left with once its own opening is cut out, instead of one clean
+ * span. Splits the item list across segments proportionally to each
+ * segment's length -- a sliver of a segment (a doorway pushed close to one
+ * corner) naturally gets few or zero items rather than being forced to
+ * squeeze its "fair share" in -- and returns results in the same order as
+ * `items` so the caller can zip them back together positionally, same as
+ * `layoutWall` itself.
  */
-export function generateSingleRoomMuseum({
-  id,
-  ownerId,
-  name,
-  description,
-  theme,
-  artworks: inputs,
-}: GenerateSingleRoomMuseumInput): Museum {
-  const perWall = Math.max(1, Math.ceil(inputs.length / WALLS.length));
-  const width = Math.max(10, perWall * 2.7 + 3.5);
-  const depth = Math.max(9, perWall * 2.7 + 3.5);
-  const height = 4.4;
-  const entranceWidth = 2.4;
+function layoutWallSegments(
+  segments: WallSpanSegment[],
+  maxHeight: number,
+  items: UploadedArtworkInput[],
+  tierOffset: number
+): { frameWidth: number; frameHeight: number; center: number }[] {
+  if (items.length === 0 || segments.length === 0) return [];
+  if (segments.length === 1) return layoutWall(segments[0].start, segments[0].end, maxHeight, items, tierOffset);
 
-  const room: GalleryRoom = {
-    id: "main",
-    name,
-    theme,
-    bounds: { minX: -width / 2, maxX: width / 2, minZ: -depth / 2, maxZ: depth / 2 },
-    height,
-    openings: [{ wall: "south", center: 0, width: entranceWidth, isEntrance: true }],
-  };
+  const lengths = segments.map((s) => Math.max(0, s.end - s.start));
+  const totalLength = lengths.reduce((sum, len) => sum + len, 0) || 1;
+  let assigned = 0;
+  const counts = lengths.map((len, i) => {
+    if (i === lengths.length - 1) return items.length - assigned;
+    const count = Math.round((items.length * len) / totalLength);
+    assigned += count;
+    return count;
+  });
 
-  const buckets: UploadedArtworkInput[][] = WALLS.map(() => []);
-  inputs.forEach((input, i) => buckets[i % WALLS.length].push(input));
+  const results: { frameWidth: number; frameHeight: number; center: number }[] = [];
+  let cursor = 0;
+  segments.forEach((seg, i) => {
+    const count = counts[i];
+    if (count <= 0) return;
+    const slice = items.slice(cursor, cursor + count);
+    results.push(...layoutWall(seg.start, seg.end, maxHeight, slice, tierOffset + cursor));
+    cursor += count;
+  });
+  return results;
+}
+
+/**
+ * Auto-places artwork evenly across an arbitrary set of (room, wall) slots,
+ * round-robin bucketed the same way a single room's walls are -- generalized
+ * from what used to be single-room-only so the multi-room layouts (see
+ * generateLShapeMuseum / generateCrossMuseum below) can spread pieces across
+ * every gallery in the floor plan, not just one room's three walls. Any
+ * target wall that has a doorway opening on it still gets its share --
+ * `wallSegments` finds whatever solid run(s) remain beside the opening --
+ * rather than being skipped outright, so a room with multiple connectors
+ * (e.g. a cross layout's main gallery) doesn't lose most of its wall space
+ * to doorways the way a hardcoded "skip any wall with an opening" rule
+ * would.
+ */
+export function layoutArtworksAcrossWalls(
+  wallTargets: { room: GalleryRoom; wall: WallSide }[],
+  inputs: UploadedArtworkInput[]
+): Artwork[] {
+  if (wallTargets.length === 0) return [];
+  const buckets: UploadedArtworkInput[][] = wallTargets.map(() => []);
+  inputs.forEach((input, i) => buckets[i % wallTargets.length].push(input));
 
   const artworks: Artwork[] = [];
-  WALLS.forEach((wall, wallIndex) => {
-    const bucket = buckets[wallIndex];
+  wallTargets.forEach(({ room, wall }, targetIndex) => {
+    const bucket = buckets[targetIndex];
     if (bucket.length === 0) return;
     const [spanMin, spanMax] = wallSpan(room, wall);
-    const maxHeight = height * 0.56;
-    const laidOut = layoutWall(spanMin, spanMax, maxHeight, bucket, artworks.length);
+    const opening = room.openings.find((o) => o.wall === wall);
+    const { segments } = wallSegments(spanMin, spanMax, opening);
+    const maxHeight = room.height * 0.56;
+    const laidOut = layoutWallSegments(segments, maxHeight, bucket, artworks.length);
 
     bucket.forEach((input, i) => {
-      const { frameWidth, frameHeight, center } = laidOut[i];
+      const laid = laidOut[i];
+      if (!laid) return;
+      const { frameWidth, frameHeight, center } = laid;
       const { wallPosition, interactionZone } = placeOnWall(room, wall, center);
       artworks.push({
         id: input.id,
@@ -204,13 +237,87 @@ export function generateSingleRoomMuseum({
     });
   });
 
+  return artworks;
+}
+
+/**
+ * Auto-places artwork evenly across three walls of an *already-fixed* room
+ * (the fourth wall -- by convention, south -- is assumed to hold the
+ * entrance and is never hung). Split out of `generateSingleRoomMuseum` so a
+ * room whose bounds/openings are hand-authored (e.g. a custom Blender
+ * model, see `GalleryRoom.modelUrl`) can still re-run this same placement
+ * whenever artwork is added or removed, without its shape ever being
+ * recomputed -- see `server/museumLayout.ts`'s `relayoutMuseum`.
+ */
+export function layoutArtworksForRoom(room: GalleryRoom, inputs: UploadedArtworkInput[]): Artwork[] {
+  return layoutArtworksAcrossWalls(
+    WALLS.map((wall) => ({ room, wall })),
+    inputs
+  );
+}
+
+/**
+ * Builds a single, compact gallery room -- a snug ~6.5x6.5, only growing
+ * beyond that if a full 4 pieces genuinely can't fit at the minimum
+ * comfortably -- and auto-places pieces evenly across three walls (the
+ * fourth holds the entrance). This is the smallest of the three size tiers
+ * (see `generateMuseumLayout` below); it's only ever reached for a handful
+ * of pieces, so it stays deliberately small rather than the generous
+ * one-size-fits-all room this used to be for every museum regardless of
+ * collection size.
+ *
+ * 6.5x6.5, not a literal 4x4 -- two problems with going any smaller, both
+ * found by actually walking the smaller room rather than just eyeballing
+ * the numbers:
+ *
+ * 1. The third-person camera rig (see game/camera/thirdPersonCamera.ts's
+ *    DISTANCE/MIN_DISTANCE) wants roughly 4.6 units of follow distance and
+ *    was tuned against rooms no smaller than the demo's own ~5.5-wide
+ *    alcoves; a true 4x4 leaves less than half that available in any
+ *    direction from center, which pinned the camera to its hard
+ *    MIN_DISTANCE floor almost everywhere in the room -- a persistently
+ *    tight, clipped-in view rather than a cozy one.
+ * 2. MuseumRoom's auto-placed furnishings (sculpture, rug, two columns,
+ *    chandelier) are sized/spaced for a normal-size room and aren't aware
+ *    of how small this tier's room is -- at 5.5x5.5 the rug and the two
+ *    columns ended up nearly touching, which alongside four wall-mounted
+ *    frames and a shadow-casting chandelier packed that much geometry
+ *    overlap into that little space tightly enough to occasionally destabilize
+ *    the renderer. 6.5x6.5 gives the same fixed decor real clearance without
+ *    changing MuseumRoom's placement logic itself.
+ */
+export function generateSingleRoomMuseum({
+  id,
+  ownerId,
+  name,
+  description,
+  theme,
+  artworks: inputs,
+}: GenerateSingleRoomMuseumInput): Museum {
+  const perWall = Math.max(1, Math.ceil(inputs.length / WALLS.length));
+  const width = Math.max(6.5, perWall * 1.3 + 1.6);
+  const depth = Math.max(6.5, perWall * 1.3 + 1.6);
+  const height = 4.2;
+  const entranceWidth = 2.2;
+
+  const room: GalleryRoom = {
+    id: "main",
+    name,
+    theme,
+    bounds: { minX: -width / 2, maxX: width / 2, minZ: -depth / 2, maxZ: depth / 2 },
+    height,
+    openings: [{ wall: "south", center: 0, width: entranceWidth, isEntrance: true }],
+  };
+
+  const artworks = layoutArtworksForRoom(room, inputs);
+
   return {
     id,
     ownerId,
     name,
     description,
     artworks,
-    spawnPoint: { x: 0, y: 0, z: depth / 2 - 2 },
+    spawnPoint: { x: 0, y: 0, z: depth / 2 - 1.6 },
     rooms: [room],
     openingConnectors: [],
   };

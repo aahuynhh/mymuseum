@@ -9,22 +9,26 @@ export type ButtonVariant = "primary" | "secondary" | "ghost" | "danger";
 export type ButtonSize = "md" | "lg";
 
 const base =
-  "relative inline-flex items-center justify-center gap-2 rounded-full font-medium tracking-[0.005em] transition-[background-color,border-color,color,box-shadow] duration-200 ease-out focus-visible:outline-none disabled:opacity-45 disabled:pointer-events-none";
+  "relative inline-flex items-center justify-center gap-2 rounded-full font-heading font-medium tracking-[0.005em] transition-[background-color,border-color,color,box-shadow] duration-200 ease-out focus-visible:outline-none disabled:opacity-45 disabled:pointer-events-none";
 
 // Single source of truth for button colors across the whole site.
-// Terracotta is the primary brand-emphasis color (eyebrows, hover accents);
-// sage is the primary action / success color; dusty-red is reserved
-// specifically for destructive confirmation (see danger below), so it never
-// doubles as an error-text or generic-emphasis color anywhere else.
+// Gallery-blue is the primary action color -- it carries the museum's
+// identity into every solid CTA. Terracotta is the interaction-accent color
+// (hover states, active underlines, focus rings); sage is reserved for
+// secondary/supporting semantics (published, saved, connected -- see
+// PublishBadge, SaveStatus, VisitorPanel), never the primary CTA fill.
+// Dusty-red is reserved specifically for destructive confirmation (see
+// danger below), so it never doubles as an error-text or generic-emphasis
+// color anywhere else.
 const variants: Record<ButtonVariant, string> = {
   primary:
-    "bg-sage text-surface shadow-warm-sm hover:bg-sage-dark hover:shadow-warm-md",
+    "bg-gallery-blue text-surface shadow-warm-sm hover:bg-gallery-blue-dark hover:shadow-warm-md",
 
   secondary:
-    "bg-surface text-ink border border-border shadow-warm-xs hover:border-sage-dark hover:text-sage-dark hover:shadow-warm-sm",
+    "bg-surface text-ink border border-border shadow-warm-xs hover:border-terracotta-dark hover:text-terracotta-dark hover:shadow-warm-sm",
 
   ghost:
-    "bg-transparent text-ink hover:bg-canvas-deep hover:text-sage-dark",
+    "bg-transparent text-ink hover:bg-canvas-deep hover:text-terracotta-dark",
 
   // Reserved for destructive confirmation (e.g. "Confirm delete") -- never
   // used for the low-emphasis trigger that opens a confirm step, only the

@@ -17,7 +17,7 @@ export default function MuseumError({
 
   return (
     <main className="flex min-h-[100dvh] flex-col items-center justify-center gap-4 px-6 text-center">
-      <h1 className="font-display text-2xl text-ink">This museum hit a snag</h1>
+      <h1 className="font-heading text-2xl text-ink">This museum hit a snag</h1>
       <p className="max-w-sm text-sm text-ink-muted">
         Something went wrong while loading this room. You can try again, or head back home.
       </p>

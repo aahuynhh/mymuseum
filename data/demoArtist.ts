@@ -1,21 +1,16 @@
-import type { ArtistProfile, AvatarConfiguration } from "@/types";
-import { DEMO_MUSEUM_ID } from "./museum";
+import type { AvatarConfiguration } from "@/types";
 
-export const DEMO_ARTIST: ArtistProfile = {
-  id: "alayna-huynh",
-  username: "alayna-huynh",
-  displayName: "Alayna Huynh",
-  bio: "Alayna paints quiet, sunlit interiors and coastal studies exploring color memory and the architecture of light. She works primarily in oil and gouache, and has spent the past four years building a body of work about the rooms and shorelines we return to.",
-  disciplines: ["Painting", "Gouache", "Mixed Media"],
-  museumId: DEMO_MUSEUM_ID,
-};
-
+/** Avatar worn by the figure standing in the homepage's live 3D preview
+ * (see components/landing/Hero3DPreview.tsx) -- a generic room occupant,
+ * not tied to any named creator. */
 export const DEMO_ARTIST_AVATAR: AvatarConfiguration = {
-  skinTone: "honey",
-  hairStyle: "twin-buns",
+  bodyShape: "rounded-cube",
+  skinTone: "plum",
+  hairStyle: "top-hat",
   hairColor: "chestnut",
   top: "sunset-sweater",
   bottom: "denim-skirt",
   shoes: "garden-boots",
-  accessory: "tote-bag",
+  accessory: "round-glasses",
+  expression: "happy",
 };

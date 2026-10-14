@@ -1,11 +1,11 @@
 import "server-only";
-import type { Museum } from "@/types";
+import type { Museum, RoomBounds, WallOpening } from "@/types";
 import type { GalleryThemeId } from "@/game/museum/themes";
 import { createClient } from "@/lib/supabase/server";
 import { getArtworksForMuseum } from "./artworksRepository";
 import { deleteArtworkFolder, getSignedArtworkUrls } from "@/lib/artwork/storage";
 
-type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
+export type SupabaseServerClient = Awaited<ReturnType<typeof createClient>>;
 
 /**
  * Postgres-backed store for user-created museums (replaces the old
@@ -80,7 +80,7 @@ export async function getMuseumSummariesForOwner(ownerId: string): Promise<Museu
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("museums")
-    .select("id, name, description, created_at, is_published")
+    .select("id, name, description, created_at, is_published, cover_artwork_id")
     .eq("owner_id", ownerId)
     .order("created_at", { ascending: false });
 
@@ -88,7 +88,7 @@ export async function getMuseumSummariesForOwner(ownerId: string): Promise<Museu
 
   const coverImageUrls = await getCoverImageUrls(
     supabase,
-    data.map((row) => row.id)
+    data.map((row) => ({ id: row.id, coverArtworkId: row.cover_artwork_id }))
   );
 
   return data.map((row) => ({
@@ -101,41 +101,142 @@ export async function getMuseumSummariesForOwner(ownerId: string): Promise<Museu
   }));
 }
 
+export interface CoverImageQuery {
+  id: string;
+  /** Owner-picked artwork id (CoverArtworkPicker), or null to fall back to
+   * the museum's first artwork by display order. */
+  coverArtworkId: string | null;
+}
+
 /**
- * Resolves each museum's cover image -- its first artwork by display
+ * Resolves each museum's cover image -- the owner's explicitly chosen
+ * artwork if they've picked one, otherwise its first artwork by display
  * order -- through the same signed-URL path `getArtworksForMuseum` already
  * uses for every artwork image. No new access system: this reads through
  * the same RLS-scoped client, the same private bucket, the same
  * `getSignedArtworkUrls` batching helper. Museums with no artwork yet are
- * simply absent from the returned map.
+ * simply absent from the returned map. A `coverArtworkId` that no longer
+ * matches any artwork of that museum (e.g. it was since deleted, though
+ * `cover_artwork_id`'s `on delete set null` should normally prevent that)
+ * silently falls back to the first artwork rather than erroring.
  */
-async function getCoverImageUrls(
+export async function getCoverImageUrls(
   supabase: SupabaseServerClient,
-  museumIds: string[]
+  museums: CoverImageQuery[]
 ): Promise<Map<string, string>> {
   const result = new Map<string, string>();
-  if (museumIds.length === 0) return result;
+  if (museums.length === 0) return result;
 
   const { data, error } = await supabase
     .from("artworks")
-    .select("museum_id, storage_path, display_order")
-    .in("museum_id", museumIds)
+    .select("id, museum_id, storage_path, display_order")
+    .in(
+      "museum_id",
+      museums.map((m) => m.id)
+    )
     .order("display_order", { ascending: true });
 
   if (error || !data) return result;
 
-  const firstPathByMuseum = new Map<string, string>();
+  const artworksByMuseum = new Map<string, { id: string; storage_path: string }[]>();
   for (const row of data) {
-    if (!firstPathByMuseum.has(row.museum_id)) {
-      firstPathByMuseum.set(row.museum_id, row.storage_path);
-    }
+    const list = artworksByMuseum.get(row.museum_id);
+    if (list) list.push(row);
+    else artworksByMuseum.set(row.museum_id, [row]);
   }
-  if (firstPathByMuseum.size === 0) return result;
 
-  const signedUrls = await getSignedArtworkUrls(supabase, [...firstPathByMuseum.values()]);
-  for (const [museumId, path] of firstPathByMuseum) {
+  const chosenPathByMuseum = new Map<string, string>();
+  for (const museum of museums) {
+    const artworks = artworksByMuseum.get(museum.id);
+    if (!artworks || artworks.length === 0) continue;
+    const picked = museum.coverArtworkId
+      ? artworks.find((a) => a.id === museum.coverArtworkId)
+      : undefined;
+    chosenPathByMuseum.set(museum.id, (picked ?? artworks[0]).storage_path);
+  }
+  if (chosenPathByMuseum.size === 0) return result;
+
+  const signedUrls = await getSignedArtworkUrls(supabase, [...chosenPathByMuseum.values()]);
+  for (const [museumId, path] of chosenPathByMuseum) {
     const url = signedUrls.get(path);
     if (url) result.set(museumId, url);
+  }
+  return result;
+}
+
+export interface PublicMuseumSummary extends MuseumSummary {
+  creatorUsername: string;
+  creatorDisplayName: string;
+}
+
+/**
+ * Listing for the public /explore page -- every published museum
+ * (regardless of owner), newest first. Unlike getMuseumSummariesForOwner
+ * this has no owner filter at all: RLS's `museums_select_published_or_own`
+ * already restricts an anonymous/other-user read to `is_published = true`
+ * rows, so the explicit `.eq("is_published", true)` here is redundant with
+ * RLS but kept anyway to make the query's intent legible on its own and to
+ * exclude the requesting user's own drafts, which RLS alone would let
+ * through.
+ */
+export async function getPublishedMuseumSummaries(): Promise<PublicMuseumSummary[]> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("museums")
+    .select("id, name, description, created_at, is_published, owner_id, cover_artwork_id")
+    .eq("is_published", true)
+    .order("created_at", { ascending: false });
+
+  if (error || !data) return [];
+
+  const [coverImageUrls, creators] = await Promise.all([
+    getCoverImageUrls(
+      supabase,
+      data.map((row) => ({ id: row.id, coverArtworkId: row.cover_artwork_id }))
+    ),
+    getCreatorsByOwnerId(supabase, data.map((row) => row.owner_id)),
+  ]);
+
+  return data.map((row) => {
+    const creator = creators.get(row.owner_id);
+    return {
+      id: row.id,
+      name: row.name,
+      description: row.description,
+      createdAt: row.created_at,
+      isPublished: row.is_published,
+      coverImageUrl: coverImageUrls.get(row.id) ?? null,
+      creatorUsername: creator?.username ?? "unknown",
+      creatorDisplayName: creator?.displayName ?? "Unknown creator",
+    };
+  });
+}
+
+/**
+ * Batched profiles(owner_id) -> {username, displayName} lookup for the
+ * explore listing's "by [creator]" line. Same shape as getCoverImageUrls:
+ * one `.in(...)` query plus an in-memory map, no per-row round trip. `museums`
+ * has no FK straight to `profiles` (both instead reference `auth.users`), so
+ * this can't be expressed as a single PostgREST embed and has to be a
+ * separate query joined here in JS.
+ */
+async function getCreatorsByOwnerId(
+  supabase: SupabaseServerClient,
+  ownerIds: string[]
+): Promise<Map<string, { username: string; displayName: string }>> {
+  const result = new Map<string, { username: string; displayName: string }>();
+  const uniqueOwnerIds = [...new Set(ownerIds)];
+  if (uniqueOwnerIds.length === 0) return result;
+
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("id, username, display_name")
+    .in("id", uniqueOwnerIds);
+
+  if (error || !data) return result;
+
+  for (const row of data) {
+    result.set(row.id, { username: row.username, displayName: row.display_name });
   }
   return result;
 }
@@ -146,6 +247,14 @@ export interface MuseumEditContext {
   description: string;
   isPublished: boolean;
   theme: GalleryThemeId;
+  /** Owner-picked cover artwork id (see CoverArtworkPicker), or null if the
+   * museum still falls back to its first artwork by display order. */
+  coverArtworkId: string | null;
+  /** The museum's first/main room in full -- `null` for a museum with no
+   * room yet. Used by server/museumLayout.ts's relayoutMuseum to detect a
+   * hand-authored custom room (GalleryRoom.modelUrl) so an artwork add/
+   * remove re-lays-out frames without ever recomputing that room's shape. */
+  room: Museum["rooms"][number] | null;
 }
 
 /**
@@ -164,7 +273,7 @@ export async function getMuseumEditContext(
   const supabase = await createClient();
   const { data, error } = await supabase
     .from("museums")
-    .select("id, name, description, is_published, rooms")
+    .select("id, name, description, is_published, rooms, cover_artwork_id")
     .eq("id", museumId)
     .eq("owner_id", ownerId)
     .maybeSingle();
@@ -177,6 +286,8 @@ export async function getMuseumEditContext(
     description: data.description,
     isPublished: data.is_published,
     theme: rooms[0]?.theme ?? "linen",
+    coverArtworkId: data.cover_artwork_id,
+    room: rooms[0] ?? null,
   };
 }
 
@@ -185,6 +296,23 @@ export interface MuseumMetadataPatch {
   description?: string;
   isPublished?: boolean;
   theme?: GalleryThemeId;
+  /** Set to an artwork id to pin the cover thumbnail, or `null` to revert to
+   * the default (first artwork by display order). Undefined leaves it
+   * untouched -- same "only patch what's present" convention as every other
+   * field here. */
+  coverArtworkId?: string | null;
+  /** Hand-authored overrides for the museum's first/main room -- how a
+   * custom Blender room (GalleryRoom.modelUrl) gets attached, since there's
+   * no dashboard UI for it. Each field is merged onto the existing room
+   * individually (only what's provided changes); `modelUrl: null` reverts
+   * the room to the procedural Floor/Walls renderer. No-op if the museum
+   * has no room yet. */
+  room?: {
+    modelUrl?: string | null;
+    bounds?: RoomBounds;
+    height?: number;
+    openings?: WallOpening[];
+  };
 }
 
 /**
@@ -208,8 +336,9 @@ export async function updateMuseumMetadata(
   if (patch.name !== undefined) update.name = patch.name;
   if (patch.description !== undefined) update.description = patch.description;
   if (patch.isPublished !== undefined) update.is_published = patch.isPublished;
+  if (patch.coverArtworkId !== undefined) update.cover_artwork_id = patch.coverArtworkId;
 
-  if (patch.theme !== undefined) {
+  if (patch.theme !== undefined || patch.room !== undefined) {
     const { data: current, error: readError } = await supabase
       .from("museums")
       .select("rooms")
@@ -219,9 +348,23 @@ export async function updateMuseumMetadata(
     if (readError || !current) return false;
 
     const rooms = current.rooms as Museum["rooms"];
-    if (rooms[0]) rooms[0] = { ...rooms[0], theme: patch.theme };
+    if (rooms[0]) {
+      if (patch.theme !== undefined) {
+        rooms[0] = { ...rooms[0], theme: patch.theme };
+        update.theme = patch.theme;
+      }
+      if (patch.room !== undefined) {
+        const roomPatch = patch.room;
+        rooms[0] = {
+          ...rooms[0],
+          ...(roomPatch.bounds !== undefined && { bounds: roomPatch.bounds }),
+          ...(roomPatch.height !== undefined && { height: roomPatch.height }),
+          ...(roomPatch.openings !== undefined && { openings: roomPatch.openings }),
+          modelUrl: roomPatch.modelUrl === undefined ? rooms[0].modelUrl : (roomPatch.modelUrl ?? undefined),
+        };
+      }
+    }
     update.rooms = rooms;
-    update.theme = patch.theme;
   }
 
   if (Object.keys(update).length === 0) return true;
@@ -290,6 +433,11 @@ export async function hasMuseum(id: string): Promise<boolean> {
 
 /** Inserts a newly-created museum row (rooms/layout only -- artwork rows are
  * inserted separately via server/artworksRepository.ts's insertArtworks).
+ * `cover_artwork_id` is deliberately left unset here even when the creator
+ * picked a cover up front -- that column has a FK into `artworks`, which
+ * doesn't have rows yet at this point in museum creation (this insert runs
+ * before insertArtworks below it). The route sets it afterward, once the
+ * artwork rows it references actually exist -- see setCoverArtworkId.
  * Throws on failure (e.g. RLS rejection because the caller isn't
  * authenticated) so the route handler can surface a clear error instead of
  * silently losing the museum. */
@@ -316,6 +464,26 @@ export async function createMuseum(
     console.error("[museums] failed to insert museum row:", error.message, museum.id);
     throw new Error(`Failed to save museum: ${error.message}`);
   }
+}
+
+/** Sets a just-created museum's cover thumbnail once its artwork rows
+ * exist (see createMuseum's doc comment on why this can't happen in the
+ * same insert). Best-effort by design: called after the museum and its
+ * artworks are already durably saved, so a failure here shouldn't roll
+ * back museum creation over what's just a thumbnail pick -- callers should
+ * swallow/log a `false` return rather than fail the whole request. */
+export async function setCoverArtworkId(
+  museumId: string,
+  ownerId: string,
+  coverArtworkId: string
+): Promise<boolean> {
+  const supabase = await createClient();
+  const { error } = await supabase
+    .from("museums")
+    .update({ cover_artwork_id: coverArtworkId })
+    .eq("id", museumId)
+    .eq("owner_id", ownerId);
+  return !error;
 }
 
 /**

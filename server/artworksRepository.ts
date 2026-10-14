@@ -218,6 +218,22 @@ export async function updateArtworkMetadata(
   return !error && data !== null;
 }
 
+/** Existence check used when an owner picks a cover thumbnail
+ * (CoverArtworkPicker/`museums.cover_artwork_id`) -- confirms the chosen
+ * artwork id actually belongs to this museum before museumsRepository's
+ * updateMuseumMetadata writes it, so a museum can never be pointed at
+ * another museum's (even the same owner's other museum's) artwork. */
+export async function artworkExistsInMuseum(artworkId: string, museumId: string): Promise<boolean> {
+  const supabase = await createClient();
+  const { data, error } = await supabase
+    .from("artworks")
+    .select("id")
+    .eq("id", artworkId)
+    .eq("museum_id", museumId)
+    .maybeSingle();
+  return !error && data !== null;
+}
+
 /** Counts a museum's artwork rows -- used to enforce the "at least one
  * artwork must remain" rule on delete and the per-museum upload cap on
  * add, without pulling every row's full layout data just to get a length. */

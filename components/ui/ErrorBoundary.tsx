@@ -28,7 +28,7 @@ export class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBoundarySt
     if (this.state.hasError) {
       return (
         <div className="flex min-h-[60vh] w-full flex-col items-center justify-center gap-4 p-8 text-center">
-          <h2 className="font-display text-2xl text-ink">{this.props.fallbackTitle}</h2>
+          <h2 className="font-heading text-2xl text-ink">{this.props.fallbackTitle}</h2>
           <p className="max-w-md text-sm text-ink-muted">{this.props.fallbackDescription}</p>
           <Button onClick={() => window.location.reload()}>Reload page</Button>
         </div>

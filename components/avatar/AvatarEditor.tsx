@@ -3,34 +3,51 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAvatarConfig } from "@/hooks/useAvatarConfig";
+import { broadcastAvatarUpdate } from "@/lib/profile/avatarSync";
 import { AvatarPreviewCanvas } from "./AvatarPreviewCanvas";
 import { OptionGroup } from "./OptionGroup";
 import { Button } from "@/components/ui/Button";
 import {
   ACCESSORY_OPTIONS,
-  BOTTOM_OPTIONS,
-  DEFAULT_AVATAR_CONFIGURATION,
+  BODY_COLOR_OPTIONS,
+  BODY_SHAPE_OPTIONS,
+  EXPRESSION_OPTIONS,
   HAIR_COLOR_OPTIONS,
-  HAIR_STYLE_OPTIONS,
+  HEAD_DECORATION_OPTIONS,
   SHOES_OPTIONS,
-  SKIN_TONE_OPTIONS,
-  TOP_OPTIONS,
 } from "@/types/avatar";
 import type { AvatarConfiguration } from "@/types";
 
-export function AvatarEditor() {
-  const { avatarConfig, setAvatarConfig, hydrated } = useAvatarConfig();
-  const [staged, setStaged] = useState<AvatarConfiguration>(DEFAULT_AVATAR_CONFIGURATION);
-  const [saveState, setSaveState] = useState<"idle" | "saved">("idle");
+/**
+ * A signed-in visitor's avatar lives on their account
+ * (profiles.avatar_configuration -- the same field the museum, AccountMenu,
+ * and public artist page all read), so when `accountConfig` is present,
+ * saving here PATCHes /api/profile instead of writing to the localStorage
+ * guest fallback (hooks/useAvatarConfig.ts). That guest fallback only
+ * applies to signed-out visitors, and to a signed-in visitor whose account
+ * config hasn't loaded here yet.
+ */
+export function AvatarEditor({ accountConfig }: { accountConfig: AvatarConfiguration | null }) {
+  const hasAccount = accountConfig !== null;
+  const { avatarConfig: guestAvatarConfig, setAvatarConfig: setGuestAvatarConfig, hydrated: guestHydrated } =
+    useAvatarConfig();
+  const savedConfig = accountConfig ?? guestAvatarConfig;
+  const hydrated = hasAccount || guestHydrated;
+
+  const [staged, setStaged] = useState<AvatarConfiguration>(savedConfig);
+  const [saveState, setSaveState] = useState<"idle" | "saving" | "saved" | "error">("idle");
+  const [error, setError] = useState<string | null>(null);
   const router = useRouter();
 
-  // Once the persisted avatar has hydrated from localStorage, seed the
-  // editable "staged" copy from it. Adjusting state during render (React's
-  // recommended pattern for this) avoids an extra effect-driven re-render.
-  const [syncedFromStorage, setSyncedFromStorage] = useState(false);
+  // The account config is already correct on the very first render (it came
+  // from the server, deterministic for both SSR and first client render), so
+  // only the guest/localStorage path needs to wait for a post-hydration
+  // re-sync. Adjusting state during render (React's recommended pattern for
+  // this) avoids an extra effect-driven re-render.
+  const [syncedFromStorage, setSyncedFromStorage] = useState(hasAccount);
   if (hydrated && !syncedFromStorage) {
     setSyncedFromStorage(true);
-    setStaged(avatarConfig);
+    setStaged(savedConfig);
   }
 
   function update<K extends keyof AvatarConfiguration>(key: K, value: AvatarConfiguration[K]) {
@@ -38,17 +55,45 @@ export function AvatarEditor() {
     setSaveState("idle");
   }
 
-  function handleSave() {
-    setAvatarConfig(staged);
-    setSaveState("saved");
+  async function handleSave() {
+    if (!hasAccount) {
+      setGuestAvatarConfig(staged);
+      setSaveState("saved");
+      return;
+    }
+
+    setSaveState("saving");
+    setError(null);
+    try {
+      const res = await fetch("/api/profile", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ avatarConfiguration: staged }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setError(data?.error || "Couldn't save your changes.");
+        setSaveState("error");
+        return;
+      }
+      // Tell the corner AccountMenu (and anything else showing this
+      // account's avatar) right away, rather than waiting on a reload --
+      // see lib/profile/avatarSync.ts for why that's otherwise necessary.
+      broadcastAvatarUpdate(staged);
+      setSaveState("saved");
+      router.refresh();
+    } catch {
+      setError("Network error -- please try again.");
+      setSaveState("error");
+    }
   }
 
   function handleReset() {
-    setStaged(avatarConfig);
+    setStaged(savedConfig);
     setSaveState("idle");
   }
 
-  const hasUnsavedChanges = JSON.stringify(staged) !== JSON.stringify(avatarConfig);
+  const hasUnsavedChanges = JSON.stringify(staged) !== JSON.stringify(savedConfig);
 
   if (!hydrated) {
     return (
@@ -63,11 +108,15 @@ export function AvatarEditor() {
       <div className="lg:sticky lg:top-8 lg:self-start">
         <AvatarPreviewCanvas config={staged} />
         <p className="mt-3 text-center text-xs text-ink-muted">
-          Drag to rotate. This is exactly how others will see you in the museum.
+          Drag to rotate. 
         </p>
         <div className="mt-6 flex flex-col gap-2 sm:flex-row lg:flex-col">
-          <Button onClick={handleSave} disabled={!hasUnsavedChanges} className="flex-1">
-            Save avatar
+          <Button
+            onClick={handleSave}
+            disabled={!hasUnsavedChanges || saveState === "saving"}
+            className="flex-1"
+          >
+            {saveState === "saving" ? "Saving…" : "Save avatar"}
           </Button>
           <Button
             onClick={handleReset}
@@ -79,48 +128,54 @@ export function AvatarEditor() {
           </Button>
         </div>
         <p role="status" className="mt-2 text-center text-xs text-sage">
-          {saveState === "saved" && !hasUnsavedChanges ? "Saved -- see you in the museum." : " "}
+          {saveState === "error" ? (
+            <span className="text-dusty-red-dark">{error}</span>
+          ) : saveState === "saved" && !hasUnsavedChanges ? (
+            "Saved -- see you in the museum."
+          ) : (
+            " "
+          )}
         </p>
       </div>
 
       <div className="flex flex-col gap-8">
         <OptionGroup
-          legend="Skin tone"
+          legend="Character shape"
+          name="bodyShape"
+          options={BODY_SHAPE_OPTIONS}
+          value={staged.bodyShape}
+          onChange={(v) => update("bodyShape", v)}
+        />
+        <OptionGroup
+          legend="Body color"
           name="skinTone"
-          options={SKIN_TONE_OPTIONS}
+          options={BODY_COLOR_OPTIONS}
           value={staged.skinTone}
           onChange={(v) => update("skinTone", v)}
         />
         <OptionGroup
-          legend="Hairstyle"
+          legend="Expression"
+          name="expression"
+          options={EXPRESSION_OPTIONS}
+          value={staged.expression}
+          onChange={(v) => update("expression", v)}
+        />
+        <OptionGroup
+          legend="Head decoration"
           name="hairStyle"
-          options={HAIR_STYLE_OPTIONS}
+          options={HEAD_DECORATION_OPTIONS}
           value={staged.hairStyle}
           onChange={(v) => update("hairStyle", v)}
         />
         <OptionGroup
-          legend="Hair color"
+          legend="Decoration color"
           name="hairColor"
           options={HAIR_COLOR_OPTIONS}
           value={staged.hairColor}
           onChange={(v) => update("hairColor", v)}
         />
         <OptionGroup
-          legend="Top"
-          name="top"
-          options={TOP_OPTIONS}
-          value={staged.top}
-          onChange={(v) => update("top", v)}
-        />
-        <OptionGroup
-          legend="Bottom"
-          name="bottom"
-          options={BOTTOM_OPTIONS}
-          value={staged.bottom}
-          onChange={(v) => update("bottom", v)}
-        />
-        <OptionGroup
-          legend="Shoes"
+          legend="Feet color"
           name="shoes"
           options={SHOES_OPTIONS}
           value={staged.shoes}
@@ -133,12 +188,6 @@ export function AvatarEditor() {
           value={staged.accessory}
           onChange={(v) => update("accessory", v)}
         />
-
-        <div className="mt-2 flex flex-wrap gap-3 border-t border-border/70 pt-6">
-          <Button variant="secondary" onClick={() => router.push("/museum/demo-artist")}>
-            Enter demo museum
-          </Button>
-        </div>
       </div>
     </div>
   );

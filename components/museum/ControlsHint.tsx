@@ -3,6 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
+import { usePrefersCoarsePointer } from "@/hooks/usePrefersCoarsePointer";
 
 const CONTROLS = [
   { keys: "W A S D / Arrows", action: "Move around" },
@@ -18,6 +19,12 @@ interface ControlsHintProps {
   onToggleMusic: () => void;
   exitHref: string;
   exitLabel: string;
+  /** Opens the Museum Mail note composer for this museum. `null` hides the
+   * row entirely (e.g. the artist has disabled incoming messages) --
+   * deliberately just another plain-text Options row rather than its own
+   * dedicated HUD pill, so messaging doesn't get any more visual weight
+   * than "mute background music." */
+  onLeaveNote: (() => void) | null;
 }
 
 export function ControlsHint({
@@ -27,8 +34,12 @@ export function ControlsHint({
   onToggleMusic,
   exitHref,
   exitLabel,
+  onLeaveNote,
 }: ControlsHintProps) {
   const [expanded, setExpanded] = useState(true);
+  // The keyboard legend is meaningless on a touch device -- hide that group
+  // entirely there and lead straight into Options (grid view first).
+  const coarsePointer = usePrefersCoarsePointer();
 
   return (
     <div className="fixed right-4 top-4 z-20 sm:right-6 sm:top-6">
@@ -52,15 +63,28 @@ export function ControlsHint({
             transition={{ duration: 0.18, ease: [0.16, 1, 0.3, 1] }}
             className="mt-2 w-60 origin-top-right rounded-2xl border border-border/70 bg-surface/95 p-3 shadow-warm-md backdrop-blur-md"
           >
-            <dl>
-              {CONTROLS.map((c) => (
-                <div key={c.action} className="flex items-center justify-between gap-3 py-1 text-sm">
-                  <dt className="text-ink-muted">{c.action}</dt>
-                  <dd className="font-medium text-ink">{c.keys}</dd>
-                </div>
-              ))}
-            </dl>
-            <div className="mt-2 flex flex-col gap-1 border-t border-border/70 pt-2">
+            {!coarsePointer && (
+              <>
+                <p className="px-1 pb-1.5 text-xs font-semibold uppercase tracking-[0.08em] text-ink-muted">
+                  How to move
+                </p>
+                <dl>
+                  {CONTROLS.map((c) => (
+                    <div key={c.action} className="flex items-center justify-between gap-3 py-1 text-sm">
+                      <dt className="text-ink-muted">{c.action}</dt>
+                      <dd className="font-medium text-ink">{c.keys}</dd>
+                    </div>
+                  ))}
+                </dl>
+                {/* Same "wall label" dotted rule used in ArtworkModal, tying
+                    the HUD to the same museum-signage visual language. */}
+                <div className="rule-dotted my-2.5" />
+              </>
+            )}
+            <p className="px-1 pb-1.5 text-xs font-semibold uppercase tracking-[0.08em] text-ink-muted">
+              Options
+            </p>
+            <div className="flex flex-col gap-1">
               <button
                 type="button"
                 onClick={onToggleGridView}
@@ -75,6 +99,15 @@ export function ControlsHint({
               >
                 {musicPlaying ? "Mute background music" : "Play background music"}
               </button>
+              {onLeaveNote && (
+                <button
+                  type="button"
+                  onClick={onLeaveNote}
+                  className="rounded-lg px-2 py-1.5 text-left text-sm font-medium text-dusty-blue-dark transition-colors duration-200 hover:bg-canvas-deep"
+                >
+                  Leave a note for the artist
+                </button>
+              )}
               <Link
                 href={exitHref}
                 className="rounded-lg px-2 py-1.5 text-sm font-medium text-ink-muted transition-colors duration-200 hover:bg-canvas-deep hover:text-ink"

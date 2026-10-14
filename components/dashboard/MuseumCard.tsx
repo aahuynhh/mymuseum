@@ -22,7 +22,7 @@ function formatDate(iso: string): string {
  */
 export function MuseumCard({ id, name, description, createdAt, isPublished, coverImageUrl }: MuseumSummary) {
   return (
-    <li className="flex flex-col overflow-hidden rounded-[1.75rem] border border-border/70 bg-surface shadow-warm-sm">
+    <li className="flex flex-col overflow-hidden rounded-[1.75rem] border border-border/70 bg-surface shadow-warm-sm transition-all duration-300 ease-out hover:-translate-y-1 hover:border-terracotta/40 hover:shadow-warm-md">
       <div className="aspect-[4/3] w-full overflow-hidden border-b border-border/60 bg-canvas-deep">
         {coverImageUrl ? (
           // Signed Storage URL for this museum's first artwork, same
@@ -37,7 +37,7 @@ export function MuseumCard({ id, name, description, createdAt, isPublished, cove
       <div className="flex flex-1 flex-col gap-3 p-5">
         <div>
           <div className="flex flex-wrap items-center gap-2">
-            <h2 className="font-display text-lg text-ink">{name}</h2>
+            <h2 className="font-heading text-lg text-ink">{name}</h2>
             <PublishBadge isPublished={isPublished} />
           </div>
           {description && <p className="mt-1 line-clamp-2 text-sm text-ink-muted">{description}</p>}

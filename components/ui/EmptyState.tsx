@@ -30,26 +30,39 @@ interface EmptyStateProps {
   description?: ReactNode;
   actions?: ReactNode;
   className?: string;
+  /** "dark" sits this on a deep-tone SectionEnvironment (e.g. CommunityMuseums'
+   * gallery-blue room) -- swaps the hardcoded ink/ink-muted text for surface
+   * tones so it stays legible instead of rendering dark text on a dark wall. */
+  tone?: "light" | "dark";
 }
 
 /** Shared empty-state card -- replaces the plain dashed gray box previously
  * hand-typed on the dashboard and create flow. */
-export function EmptyState({ title, description, actions, className }: EmptyStateProps) {
+export function EmptyState({ title, description, actions, className, tone = "light" }: EmptyStateProps) {
+  const isDark = tone === "dark";
   return (
     <div
       className={cn(
-        "flex flex-col items-center gap-3 rounded-2xl border border-dashed border-border bg-canvas-deep/50 p-10 text-center",
+        "flex flex-col items-center gap-3 rounded-2xl border border-dashed p-10 text-center",
+        isDark ? "border-surface/30 bg-surface/10" : "border-border bg-canvas-deep/50",
         className
       )}
     >
       <span
         aria-hidden="true"
-        className="flex h-14 w-14 items-center justify-center rounded-full border border-border bg-surface text-ink-muted shadow-warm-xs"
+        className={cn(
+          "flex h-14 w-14 items-center justify-center rounded-full border shadow-warm-xs",
+          isDark ? "border-surface/30 bg-surface/10 text-surface" : "border-border bg-surface text-ink-muted"
+        )}
       >
         <EmptyFrameIcon />
       </span>
-      <p className="font-display text-xl text-ink">{title}</p>
-      {description && <p className="mx-auto max-w-sm text-sm text-ink-muted">{description}</p>}
+      <p className={cn("font-heading text-xl", isDark ? "text-surface" : "text-ink")}>{title}</p>
+      {description && (
+        <p className={cn("mx-auto max-w-sm text-sm", isDark ? "text-surface/75" : "text-ink-muted")}>
+          {description}
+        </p>
+      )}
       {actions && <div className="mt-2 flex flex-wrap items-center justify-center gap-3">{actions}</div>}
     </div>
   );

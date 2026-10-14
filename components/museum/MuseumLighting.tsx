@@ -6,8 +6,8 @@ import { getGalleryTheme } from "@/game/museum/themes";
 export function MuseumLighting({ rooms = [] }: { rooms?: GalleryRoom[] }) {
   return (
     <>
-      <hemisphereLight args={["#fff6e4", "#d9c4a3", 0.55]} />
-      <ambientLight intensity={0.28} />
+      <hemisphereLight args={["#fff6e4", "#d9c4a3", 1.05]} />
+      <ambientLight intensity={0.6} />
       {/*
         Shadow tuning note: the dark, sometimes-flickering seam that used to
         run along every wall/floor junction was shadow acne, not a geometry
@@ -30,7 +30,7 @@ export function MuseumLighting({ rooms = [] }: { rooms?: GalleryRoom[] }) {
       */}
       <directionalLight
         position={[8, 11, 5]}
-        intensity={0.95}
+        intensity={1.4}
         color="#ffedcc"
         castShadow
         shadow-mapSize-width={2048}
@@ -54,9 +54,9 @@ export function MuseumLighting({ rooms = [] }: { rooms?: GalleryRoom[] }) {
           <pointLight
             key={room.id}
             position={[centerX, room.height * 0.72, centerZ]}
-            intensity={0.5}
+            intensity={0.85}
             color={theme.accentLight}
-            distance={span * 0.9}
+            distance={span * 1.1}
           />
         );
       })}

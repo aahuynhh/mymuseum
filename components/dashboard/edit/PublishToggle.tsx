@@ -78,7 +78,7 @@ export function PublishToggle({
     >
       <div className="flex flex-wrap items-center justify-between gap-4">
         <div>
-          <h2 className="font-display text-xl text-ink">Visibility</h2>
+          <h2 className="font-heading text-xl text-ink">Visibility</h2>
           <p className="mt-1 text-sm text-ink-muted">
             {isPublished
               ? "Published -- anyone with the link can visit."

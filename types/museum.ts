@@ -27,6 +27,12 @@ export interface GalleryRoom {
   bounds: RoomBounds;
   height: number;
   openings: WallOpening[];
+  /** Path to a Blender-exported .glb (e.g. "/models/my-room.glb") used as this
+   * room's decorative geometry instead of the procedural box (Floor/Walls).
+   * Purely visual -- collision, camera clamping, artwork wall placement, and
+   * lighting all still work off `bounds`/`height`/`openings` alone, so the
+   * model's actual walls must be hand-aligned to match those numbers. */
+  modelUrl?: string;
 }
 
 export interface Museum {
@@ -46,11 +52,3 @@ export interface Museum {
   openingConnectors: RoomBounds[];
 }
 
-export interface ArtistProfile {
-  id: string;
-  username: string;
-  displayName: string;
-  bio: string;
-  disciplines: string[];
-  museumId: string;
-}

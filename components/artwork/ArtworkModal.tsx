@@ -9,6 +9,11 @@ interface ArtworkModalProps {
   activeId: string;
   onClose: () => void;
   onNavigate: (id: string) => void;
+  /** Whether the "Message the artist" action should render -- false for
+   * the museum's own owner, or when the artist has disabled incoming
+   * Museum Mail. */
+  canMessageArtist: boolean;
+  onMessageArtist: () => void;
 }
 
 const EASE_OUT_SOFT = [0.16, 1, 0.3, 1] as const;
@@ -19,7 +24,14 @@ const EASE_OUT_SOFT = [0.16, 1, 0.3, 1] as const;
  * Rendered by its parent inside <AnimatePresence>, which drives this
  * component's exit animation when it's removed from the tree.
  */
-export function ArtworkModal({ artworks, activeId, onClose, onNavigate }: ArtworkModalProps) {
+export function ArtworkModal({
+  artworks,
+  activeId,
+  onClose,
+  onNavigate,
+  canMessageArtist,
+  onMessageArtist,
+}: ArtworkModalProps) {
   const ordered = useMemo(
     () => [...artworks].sort((a, b) => a.displayOrder - b.displayOrder),
     [artworks]
@@ -149,7 +161,7 @@ export function ArtworkModal({ artworks, activeId, onClose, onNavigate }: Artwor
           <p className="text-xs font-semibold uppercase tracking-[0.08em] text-terracotta-dark">
             {index + 1} of {ordered.length}
           </p>
-          <h2 id={titleId} className="mt-3 font-display text-2xl text-ink sm:text-3xl">
+          <h2 id={titleId} className="mt-3 font-heading text-2xl text-ink sm:text-3xl">
             {artwork.title}
           </h2>
           <p className="mt-1 text-sm text-ink-muted">
@@ -176,13 +188,24 @@ export function ArtworkModal({ artworks, activeId, onClose, onNavigate }: Artwor
               Next <span aria-hidden="true">→</span>
             </button>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="mt-3 text-sm font-medium text-ink-muted underline-offset-4 transition-colors duration-200 hover:text-terracotta-dark hover:underline"
-          >
-            Return to museum
-          </button>
+          <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1">
+            <button
+              type="button"
+              onClick={onClose}
+              className="text-sm font-medium text-ink-muted underline-offset-4 transition-colors duration-200 hover:text-terracotta-dark hover:underline"
+            >
+              Return to museum
+            </button>
+            {canMessageArtist && (
+              <button
+                type="button"
+                onClick={onMessageArtist}
+                className="text-sm font-medium text-ink-muted underline-offset-4 transition-colors duration-200 hover:text-terracotta-dark hover:underline"
+              >
+                Message the artist about this piece
+              </button>
+            )}
+          </div>
         </motion.div>
       </motion.div>
     </div>

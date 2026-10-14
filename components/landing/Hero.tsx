@@ -1,7 +1,6 @@
 "use client";
 
 import { motion } from "framer-motion";
-import { LinkButton } from "@/components/ui/Button";
 import { Hero3DPreviewLoader } from "./Hero3DPreviewLoader";
 
 const EASE_OUT_SOFT = [0.16, 1, 0.3, 1] as const;
@@ -9,9 +8,9 @@ const EASE_OUT_SOFT = [0.16, 1, 0.3, 1] as const;
 /**
  * The museum itself is the hero -- not a screenshot sitting under a headline.
  * The live 3D room fills the entire first screen edge-to-edge, immediately
- * below the header, with the title/copy/CTA floating over it (readable
- * against a top scrim) rather than pushing it down the page. A visitor can
- * start dragging to look around before they've read a word of copy.
+ * below the header, with the title/copy floating over it (readable against
+ * a top scrim) rather than pushing it down the page. A visitor can start
+ * dragging to look around before they've read a word of copy.
  *
  * The overlay content arrives in a soft, staggered fade+rise rather than
  * appearing instantly -- a small touch, but it's the difference between the
@@ -19,11 +18,11 @@ const EASE_OUT_SOFT = [0.16, 1, 0.3, 1] as const;
  * hint arrives last and later, like a quiet nudge rather than competing
  * with the headline for the first glance.
  */
-export function Hero() {
+export function Hero({ onReady }: { onReady: () => void }) {
   return (
     <section className="relative w-full overflow-hidden">
       <div className="relative h-[100dvh] w-full">
-        <Hero3DPreviewLoader />
+        <Hero3DPreviewLoader onReady={onReady} />
 
         {/* Top scrim -- gives the overlaid title/CTA guaranteed contrast
             against whatever part of the museum happens to be in view,
@@ -33,25 +32,21 @@ export function Hero() {
           className="pointer-events-none absolute inset-x-0 top-0 z-10 h-[62%] bg-gradient-to-b from-ink/80 via-ink/30 to-transparent"
         />
 
-        {/* Title, copy, and CTA -- pointer-events-none on the wrapper so a
-            drag anywhere over the text still orbits the camera; only the
-            buttons themselves re-enable pointer events. */}
-        <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex flex-col items-center px-6 pt-24 text-center sm:pt-28">
-          <motion.p
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.7, ease: EASE_OUT_SOFT }}
-            className="font-display text-sm italic text-surface/85 sm:text-base"
-          >
-            <span aria-hidden="true">— </span>
-            Showcase, share, and view art
-            <span aria-hidden="true"> —</span>
-          </motion.p>
+        {/* Title and copy -- sits in the upper third rather than pinned
+            tight under the header (crowded once nothing followed it below,
+            after the CTA buttons moved into the header) or dead-centered in
+            the viewport (floats with as much empty space above as below,
+            and competes with the room itself for visual weight). Leaves the
+            museum -- the actual "hero" -- clearly visible through the
+            larger, open lower portion of the screen. Pointer-events-none on
+            the wrapper so a drag anywhere over the text still orbits the
+            camera. */}
+        <div className="pointer-events-none absolute inset-x-0 top-0 z-10 flex flex-col items-center px-6 pt-36 text-center sm:pt-44">
           <motion.h1
             initial={{ opacity: 0, y: 14 }}
             animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.75, delay: 0.1, ease: EASE_OUT_SOFT }}
-            className="mt-3 text-balance font-display text-[2.1rem] leading-[1.05] text-surface sm:text-5xl lg:text-[3.4rem]"
+            transition={{ duration: 0.75, ease: EASE_OUT_SOFT }}
+            className="mt-3 text-balance font-heading text-[2.1rem] leading-[1.05] text-surface sm:text-5xl lg:text-[3.4rem]"
           >
             Create a world for your work.
           </motion.h1>
@@ -63,28 +58,6 @@ export function Hero() {
           >
             Upload your work, build a museum, and invite people in
           </motion.p>
-          <motion.div
-            initial={{ opacity: 0, y: 12 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.7, delay: 0.34, ease: EASE_OUT_SOFT }}
-            className="pointer-events-auto mt-6 flex flex-wrap items-center justify-center gap-4"
-          >
-            <LinkButton
-              href="/museum/demo-artist"
-              size="lg"
-              className="!px-9 !py-3.5 !text-[1.02rem] shadow-[0_20px_40px_-12px_rgba(70,89,107,0.55)] ring-4 ring-dusty-blue/25 hover:ring-dusty-blue/35"
-            >
-              Enter Alayna&apos;s Museum
-            </LinkButton>
-            <LinkButton
-              href="/avatar"
-              variant="ghost"
-              size="lg"
-              className="!border !border-dusty-blue/50 !text-surface/90 hover:!border-dusty-blue hover:!bg-dusty-blue/15 hover:!text-surface"
-            >
-              Customize Avatar
-            </LinkButton>
-          </motion.div>
         </div>
 
         {/* A quiet nudge toward the one interaction most visitors will
@@ -106,11 +79,6 @@ export function Hero() {
           </motion.span>
         </motion.div>
       </div>
-
-      <p className="mx-auto flex max-w-2xl items-center justify-center gap-2 px-6 py-3 text-center text-xs text-ink-muted">
-        <span aria-hidden="true" className="h-1.5 w-1.5 shrink-0 rounded-full bg-flax" />
-        Open in two tabs to see live multiplayer in action.
-      </p>
     </section>
   );
 }

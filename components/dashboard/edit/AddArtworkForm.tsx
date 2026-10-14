@@ -88,7 +88,7 @@ export function AddArtworkForm({ museumId, currentCount }: { museumId: string; c
       className="flex flex-col gap-5 rounded-[1.75rem] border border-dashed border-border bg-canvas-deep/40 p-6 sm:p-8"
     >
       <div>
-        <h2 className="font-display text-xl text-ink">Add artwork</h2>
+        <h2 className="font-heading text-xl text-ink">Add artwork</h2>
         <p className="mt-1 text-sm text-ink-muted">
           {atCap
             ? `This museum has reached the ${MAX_ARTWORKS_PER_MUSEUM}-artwork limit.`

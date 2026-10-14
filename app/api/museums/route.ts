@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
 import { GALLERY_THEMES, type GalleryThemeId } from "@/game/museum/themes";
-import { generateSingleRoomMuseum, type UploadedArtworkInput } from "@/game/museum/autoLayout";
-import { hasMuseum, createMuseum, deleteMuseum } from "@/server/museumsRepository";
+import type { UploadedArtworkInput } from "@/game/museum/autoLayout";
+import { generateMuseumLayout } from "@/game/museum/multiRoomLayout";
+import { hasMuseum, createMuseum, setCoverArtworkId, deleteMuseum } from "@/server/museumsRepository";
 import { insertArtworks, type NewArtworkRow } from "@/server/artworksRepository";
 import { DEMO_MUSEUM_ID } from "@/data/museum";
 import { getCurrentUser, createClient } from "@/lib/supabase/server";
@@ -114,6 +115,19 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "Each artwork needs exactly one image." }, { status: 400 });
   }
 
+  // Which uploaded piece (by position in `artworks`) the creator picked as
+  // the museum's cover thumbnail, e.g. via a "Set as cover" choice in
+  // CreateMuseumForm. Optional -- an out-of-range or absent value just
+  // leaves the museum on its default (first artwork by display order), same
+  // fallback CoverArtworkPicker already uses post-creation.
+  const coverArtworkIndex =
+    typeof payload.coverArtworkIndex === "number" &&
+    Number.isInteger(payload.coverArtworkIndex) &&
+    payload.coverArtworkIndex >= 0 &&
+    payload.coverArtworkIndex < rawArtworks.length
+      ? payload.coverArtworkIndex
+      : null;
+
   // Validate everything -- metadata and real image content/dimensions --
   // before writing anything anywhere, so a bad artwork partway through the
   // list never leaves a partial upload behind.
@@ -191,7 +205,7 @@ export async function POST(request: Request) {
     imageAspectRatio: p.imageAspectRatio,
   }));
 
-  const museum = generateSingleRoomMuseum({
+  const museum = generateMuseumLayout({
     id: museumId,
     ownerId: user.id,
     name,
@@ -269,6 +283,15 @@ export async function POST(request: Request) {
   } catch {
     await rollbackMuseumCreation();
     return NextResponse.json({ error: "Couldn't save your artwork. Please try again." }, { status: 500 });
+  }
+
+  // Best-effort: the museum and its artwork are already durably saved at
+  // this point, so a failure to pin the cover shouldn't fail (or roll back)
+  // the whole creation -- it just leaves the museum on its default cover
+  // (first artwork by display order).
+  if (coverArtworkIndex !== null) {
+    const coverArtwork = prepared[coverArtworkIndex];
+    await setCoverArtworkId(museumId, ownerId, coverArtwork.id);
   }
 
   return NextResponse.json({ museumId }, { status: 201 });

@@ -25,29 +25,64 @@ interface DraftArtwork {
 interface ArtworkDraftItemProps {
   artwork: DraftArtwork;
   index: number;
+  isCover: boolean;
   onChange: (id: string, patch: Partial<DraftArtwork>) => void;
   onRemove: (id: string) => void;
+  onSetCover: (id: string) => void;
 }
 
-export function ArtworkDraftItem({ artwork, index, onChange, onRemove }: ArtworkDraftItemProps) {
+export function ArtworkDraftItem({
+  artwork,
+  index,
+  isCover,
+  onChange,
+  onRemove,
+  onSetCover,
+}: ArtworkDraftItemProps) {
+  const missingRequired = !artwork.title.trim() || !artwork.artist.trim();
+
   return (
     <li className="flex flex-col gap-4 rounded-2xl border border-border/70 bg-surface p-4 shadow-warm-xs sm:flex-row sm:p-5">
-      <div className="h-32 w-full shrink-0 overflow-hidden rounded-xl border border-border/60 bg-canvas-deep sm:w-32">
+      <div className="relative h-32 w-full shrink-0 overflow-hidden rounded-xl border border-border/60 bg-canvas-deep sm:w-32">
         {/* Client-provided preview of the visitor's own upload, not a demo asset */}
         <img src={artwork.previewUrl} alt="" className="h-full w-full object-cover" />
+        {isCover && (
+          <span className="absolute left-1.5 top-1.5 rounded-full bg-terracotta px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.06em] text-canvas shadow-warm-xs">
+            Cover
+          </span>
+        )}
       </div>
       <div className="flex flex-1 flex-col gap-3">
-        <div className="flex items-center justify-between gap-3">
-          <p className="text-xs font-semibold uppercase tracking-[0.08em] text-ink-muted">
-            Piece {index + 1}
-          </p>
-          <button
-            type="button"
-            onClick={() => onRemove(artwork.id)}
-            className="text-xs font-medium text-ink-muted underline-offset-2 transition-colors hover:text-terracotta-dark hover:underline"
-          >
-            Remove
-          </button>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2">
+            <p className="text-xs font-semibold uppercase tracking-[0.08em] text-ink-muted">
+              Piece {index + 1}
+            </p>
+            {missingRequired && (
+              <span className="inline-flex items-center gap-1.5 text-xs font-medium text-antique-gold-dark">
+                <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-antique-gold" />
+                Needs a title and artist
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-3">
+            {!isCover && (
+              <button
+                type="button"
+                onClick={() => onSetCover(artwork.id)}
+                className="text-xs font-medium text-ink-muted underline-offset-2 transition-colors hover:text-terracotta-dark hover:underline"
+              >
+                Set as cover
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => onRemove(artwork.id)}
+              className="text-xs font-medium text-ink-muted underline-offset-2 transition-colors hover:text-terracotta-dark hover:underline"
+            >
+              Remove
+            </button>
+          </div>
         </div>
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <TextField

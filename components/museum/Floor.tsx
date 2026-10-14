@@ -1,77 +1,80 @@
 "use client";
 
 import { useMemo } from "react";
+import { useTexture } from "@react-three/drei";
 import * as THREE from "three";
 import type { RoomBounds } from "@/types";
 
-/** Procedurally paints a warm herringbone parquet floor texture on the client. */
-function useFloorTexture(baseColor: string) {
-  return useMemo(() => {
-    const size = 512;
-    const canvas = document.createElement("canvas");
-    canvas.width = size;
-    canvas.height = size;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return null;
-
-    ctx.fillStyle = baseColor;
-    ctx.fillRect(0, 0, size, size);
-
-    // Herringbone parquet: alternating diagonal plank blocks.
-    const plank = 46;
-    const board = 13;
-    ctx.save();
-    ctx.translate(size / 2, size / 2);
-    ctx.rotate(Math.PI / 4);
-    const span = size * 1.6;
-    let row = 0;
-    for (let y = -span; y < span; y += board) {
-      let col = 0;
-      for (let x = -span; x < span; x += plank) {
-        const shade = (row + col) % 2 === 0 ? 1 : -1;
-        const flicker = ((row * 31 + col * 17) % 9) - 4;
-        ctx.fillStyle = `rgba(60, 38, 22, ${0.05 + shade * 0.02 + flicker * 0.004})`;
-        ctx.fillRect(x, y, plank - 1.5, board - 1.5);
-        ctx.strokeStyle = "rgba(45, 28, 16, 0.22)";
-        ctx.lineWidth = 0.6;
-        ctx.strokeRect(x, y, plank - 1.5, board - 1.5);
-        col++;
-      }
-      row++;
-    }
-    ctx.restore();
-
-    const texture = new THREE.CanvasTexture(canvas);
-    texture.wrapS = THREE.RepeatWrapping;
-    texture.wrapT = THREE.RepeatWrapping;
-    texture.colorSpace = THREE.SRGBColorSpace;
-    return texture;
-  }, [baseColor]);
-}
+// A lighter, less saturated derivative of wood-base.png (same source photo
+// Walls.tsx's trim also uses) -- the original read as a dark, richly
+// saturated mahogany, which was too harsh/heavy for a room-filling floor at
+// this scale even after tinting. A dedicated floor variant (rather than
+// lightening wood-base.png itself) keeps the trim's own darker wood tone
+// untouched.
+const FLOOR_TEXTURE_URL = "/textures/floors/floor-wood-light.png";
+/** A single normal map combining two things that don't otherwise fit in
+ * one material: the wood's own real photographed grain (reused from
+ * wood-normal.png, same as Walls.tsx's trim) blended together with a
+ * procedurally generated plank-seam pattern (recessed grooves + staggered
+ * end-joints -- public/textures/CREDITS.md), via a UDN normal blend baked
+ * into this one texture at build time.
+ *
+ * This has to be a single combined normalMap, not a normalMap plus a
+ * separate bumpMap for the seams -- MeshStandardMaterial's shader only
+ * ever applies ONE of normalMap/bumpMap (normalMap wins whenever both are
+ * set; bumpMap is then silently ignored entirely, at any bumpScale), so
+ * layering the plank grooves in as a bumpMap alongside the grain's own
+ * normalMap rendered no differently than the grain alone -- the floor
+ * looked completely flat regardless of how strong that bumpScale was
+ * turned up, which is what "the floor looks flat" actually traced back to.
+ */
+const FLOOR_NORMAL_TEXTURE = "/textures/floors/floor-combined-normal.png";
+const FLOOR_NORMAL_SCALE = 1.1;
+/** World units one texture tile covers -- matches the old procedural
+ * texture's repeat scale so existing room proportions still read right. */
+const TILE_SIZE = 5;
 
 export function Floor({ bounds, color }: { bounds: RoomBounds; color: string }) {
-  const texture = useFloorTexture(color);
+  const baseTexture = useTexture(FLOOR_TEXTURE_URL);
+  const normalTexture = useTexture(FLOOR_NORMAL_TEXTURE);
   const width = bounds.maxX - bounds.minX;
   const depth = bounds.maxZ - bounds.minZ;
   const centerX = (bounds.minX + bounds.maxX) / 2;
   const centerZ = (bounds.minZ + bounds.maxZ) / 2;
 
-  const repeated = useMemo(() => {
-    if (!texture) return texture;
-    const clone = texture.clone();
+  // Each room needs its own repeat count (room-size-dependent), so every
+  // room clones the shared cached textures rather than mutating them in
+  // place. Both maps share the same repeat so the grain/planks and color
+  // line up instead of drifting relative to each other.
+  const { texture, normal } = useMemo(() => {
+    const repeat = [width / TILE_SIZE, depth / TILE_SIZE] as const;
+
+    const clone = baseTexture.clone();
     clone.needsUpdate = true;
-    clone.repeat.set(width / 5, depth / 5);
-    return clone;
-  }, [texture, width, depth]);
+    clone.wrapS = THREE.RepeatWrapping;
+    clone.wrapT = THREE.RepeatWrapping;
+    clone.colorSpace = THREE.SRGBColorSpace;
+    clone.repeat.set(...repeat);
+
+    const normalClone = normalTexture.clone();
+    normalClone.needsUpdate = true;
+    normalClone.wrapS = THREE.RepeatWrapping;
+    normalClone.wrapT = THREE.RepeatWrapping;
+    normalClone.repeat.set(...repeat);
+
+    return { texture: clone, normal: normalClone };
+  }, [baseTexture, normalTexture, width, depth]);
 
   return (
     <mesh rotation={[-Math.PI / 2, 0, 0]} position={[centerX, 0, centerZ]} receiveShadow>
       <planeGeometry args={[width, depth]} />
-      {repeated ? (
-        <meshStandardMaterial map={repeated} roughness={0.6} />
-      ) : (
-        <meshStandardMaterial color={color} roughness={0.6} />
-      )}
+      <meshStandardMaterial
+        map={texture}
+        normalMap={normal}
+        normalScale={new THREE.Vector2(FLOOR_NORMAL_SCALE, FLOOR_NORMAL_SCALE)}
+        color={color}
+        roughness={0.85}
+      />
     </mesh>
   );
 }

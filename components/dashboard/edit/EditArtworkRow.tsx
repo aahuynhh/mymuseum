@@ -123,12 +123,12 @@ export function EditArtworkRow({
           <p className="text-xs font-semibold uppercase tracking-[0.08em] text-ink-muted">
             Piece {artwork.displayOrder}
           </p>
-          <p className="truncate font-display text-base text-ink">{title.trim() || "Untitled"}</p>
+          <p className="truncate font-heading text-base text-ink">{title.trim() || "Untitled"}</p>
           <p className="truncate text-sm text-ink-muted">{artist.trim() || "Unknown artist"}</p>
         </div>
         {isDirty && !expanded && (
-          <span className="inline-flex items-center gap-1.5 text-xs font-medium text-flax">
-            <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-flax" />
+          <span className="inline-flex items-center gap-1.5 text-xs font-medium text-antique-gold-dark">
+            <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-antique-gold" />
             Unsaved
           </span>
         )}
@@ -149,7 +149,7 @@ export function EditArtworkRow({
           onClick={() => setExpanded((v) => !v)}
           aria-expanded={expanded}
           aria-controls={fieldsId}
-          className="shrink-0 rounded-full border border-border px-3.5 py-1.5 text-xs font-medium text-ink transition-colors duration-200 hover:border-sage-dark hover:text-sage-dark"
+          className="shrink-0 rounded-full border border-border px-3.5 py-1.5 text-xs font-medium text-ink transition-colors duration-200 hover:border-terracotta-dark hover:text-terracotta-dark"
         >
           {expanded ? "Done" : "Edit"}
         </button>

@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { DEMO_MUSEUM_ID } from "@/data/museum";
-import { DEMO_ARTIST } from "@/data/demoArtist";
 import { hasMuseum } from "@/server/museumsRepository";
+import { hasPublicCreator } from "@/server/creatorsRepository";
 import { refreshSession } from "@/lib/supabase/middleware";
 
 /**
@@ -14,7 +14,9 @@ import { refreshSession } from "@/lib/supabase/middleware";
  * and rewrites unknown ones to a path that doesn't exist -- letting Next's
  * own filesystem 404 (real `404` status) handle it. Museum slugs are
  * checked against the demo id plus the Postgres `museums` table (shared
- * with the `/api/museums` route and the museum page).
+ * with the `/api/museums` route and the museum page); artist slugs against
+ * the `profiles` table, requiring at least one published museum so a
+ * signed-up creator with nothing public yet doesn't get a live profile URL.
  *
  * Proxy also refreshes the Supabase auth session cookie on (almost) every
  * request -- see `config.matcher` below -- which is what keeps a creator's
@@ -36,7 +38,7 @@ export async function proxy(request: NextRequest) {
 
   if (!response) {
     const artistMatch = pathname.match(/^\/artist\/([^/]+)\/?$/);
-    if (artistMatch && decodeURIComponent(artistMatch[1]) !== DEMO_ARTIST.username) {
+    if (artistMatch && !(await hasPublicCreator(decodeURIComponent(artistMatch[1])))) {
       response = NextResponse.rewrite(new URL("/not-a-real-artist-route", request.url));
     }
   }

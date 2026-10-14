@@ -17,7 +17,7 @@ export function MuseumLoadingScreen({ museumName }: { museumName?: string }) {
       >
         <LogoMark className="h-16 w-auto" />
       </motion.div>
-      <p className="relative font-display text-lg text-ink">
+      <p className="relative font-heading text-lg text-ink">
         {museumName ? `Opening ${museumName}…` : "Opening the museum…"}
       </p>
       <p className="relative max-w-xs text-sm text-ink-muted">

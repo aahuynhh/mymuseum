@@ -96,6 +96,22 @@ app.prepare().then(() => {
       socket.emit("visitor:count", room ? room.size : 0);
     });
 
+    // Batched sibling of museum:peek for pages that render many museums at
+    // once (e.g. /explore) -- one socket connection instead of one per card.
+    // Caps the id list rather than trusting client input, same spirit as
+    // sanitizeString's maxLength everywhere else in this file.
+    socket.on("museums:peek", (museumIds) => {
+      if (!Array.isArray(museumIds)) return;
+      const counts = {};
+      for (const rawId of museumIds.slice(0, 200)) {
+        const museumId = sanitizeString(rawId, 64);
+        if (!museumId || counts[museumId] !== undefined) continue;
+        const room = rooms.get(museumId);
+        counts[museumId] = room ? room.size : 0;
+      }
+      socket.emit("visitor:counts", counts);
+    });
+
     socket.on("join", (payload) => {
       const museumId = sanitizeString(payload?.museumId, 64);
       const sessionId = sanitizeString(payload?.sessionId, 64);
