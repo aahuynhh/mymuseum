@@ -77,8 +77,8 @@ export function AcceptsMessagesToggle({ initialAcceptsMessages }: { initialAccep
           <span
             aria-hidden="true"
             className={cn(
-              "absolute top-1 h-6 w-6 rounded-full bg-surface shadow-warm-xs transition-transform duration-200 ease-out",
-              acceptsMessages ? "translate-x-7" : "translate-x-1"
+              "absolute left-1 top-1 h-6 w-6 rounded-full bg-surface shadow-warm-xs transition-transform duration-200 ease-out",
+              acceptsMessages ? "translate-x-6" : "translate-x-0"
             )}
           />
         </button>
