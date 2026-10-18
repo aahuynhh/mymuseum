@@ -270,10 +270,6 @@ export function CreateMuseumForm() {
           </LinkButton>
           <CopyLinkButton path={museumPath} />
         </div>
-        <p className="mx-auto mt-6 max-w-sm text-xs text-ink-muted">
-          Prototype note: this museum is saved on this demo server, not in a production database
-          -- it&apos;s a lightweight stand-in so the full experience works end to end.
-        </p>
       </div>
     );
   }
