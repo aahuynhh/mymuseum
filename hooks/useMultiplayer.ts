@@ -57,7 +57,7 @@ export function useMultiplayer({
     const socket: Socket<ServerToClientEvents, ClientToServerEvents> = io(
       process.env.NEXT_PUBLIC_SOCKET_URL || undefined,
       // Give up on a hanging handshake after 8s (default 20s) so the visitor
-      // panel settles on "Solo visit" instead of "Connecting…"; retries continue.
+      // panel settles on "Connected" instead of "Connecting…"; retries continue.
       { transports: ["websocket", "polling"], timeout: 8000 }
     );
     socketRef.current = socket;

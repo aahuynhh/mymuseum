@@ -24,7 +24,7 @@ export function VisitorPanel({
       : status === "connecting"
         ? "Connecting…"
         : status === "solo"
-          ? "Solo visit"
+          ? "Connected"
           : "Reconnecting…";
 
   return (
@@ -38,11 +38,7 @@ export function VisitorPanel({
         <span
           aria-hidden="true"
           className={`h-2 w-2 rounded-full ${
-            status === "connected"
-              ? "bg-sage"
-              : status === "solo"
-                ? "bg-ink-muted"
-                : "bg-antique-gold"
+            status === "connected" || status === "solo" ? "bg-sage" : "bg-antique-gold"
           }`}
         />
         {visitorCount} {visitorCount === 1 ? "visitor" : "visitors"}
