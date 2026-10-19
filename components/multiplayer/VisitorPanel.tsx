@@ -19,7 +19,13 @@ export function VisitorPanel({
   const [expanded, setExpanded] = useState(false);
 
   const statusLabel =
-    status === "connected" ? "Live" : status === "connecting" ? "Connecting…" : "Reconnecting…";
+    status === "connected"
+      ? "Live"
+      : status === "connecting"
+        ? "Connecting…"
+        : status === "solo"
+          ? "Solo visit"
+          : "Reconnecting…";
 
   return (
     <div className="fixed left-4 top-4 z-20 sm:left-6 sm:top-6">
@@ -32,7 +38,11 @@ export function VisitorPanel({
         <span
           aria-hidden="true"
           className={`h-2 w-2 rounded-full ${
-            status === "connected" ? "bg-sage" : "bg-antique-gold"
+            status === "connected"
+              ? "bg-sage"
+              : status === "solo"
+                ? "bg-ink-muted"
+                : "bg-antique-gold"
           }`}
         />
         {visitorCount} {visitorCount === 1 ? "visitor" : "visitors"}

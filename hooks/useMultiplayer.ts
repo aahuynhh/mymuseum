@@ -9,7 +9,11 @@ import type {
 } from "@/game/networking/protocol";
 import type { AvatarConfiguration, Player, Vector3Tuple } from "@/types";
 
-export type ConnectionStatus = "connecting" | "connected" | "disconnected";
+/** "solo" means the realtime server was never reachable (e.g. a serverless
+ *  deployment with no Socket.IO host) -- the museum still works, just without
+ *  other visitors. Socket.IO keeps retrying in the background, so it can still
+ *  flip to "connected" later. */
+export type ConnectionStatus = "connecting" | "connected" | "disconnected" | "solo";
 
 interface UseMultiplayerOptions {
   museumId: string;
@@ -52,12 +56,16 @@ export function useMultiplayer({
     // separately from the Next.js frontend.
     const socket: Socket<ServerToClientEvents, ClientToServerEvents> = io(
       process.env.NEXT_PUBLIC_SOCKET_URL || undefined,
-      { transports: ["websocket", "polling"] }
+      // Give up on a hanging handshake after 8s (default 20s) so the visitor
+      // panel settles on "Solo visit" instead of "Connecting…"; retries continue.
+      { transports: ["websocket", "polling"], timeout: 8000 }
     );
     socketRef.current = socket;
     const transforms = remoteTransforms.current;
+    let hasConnected = false;
 
     socket.on("connect", () => {
+      hasConnected = true;
       setStatus("connected");
       socket.emit("join", {
         museumId,
@@ -111,6 +119,13 @@ export function useMultiplayer({
 
     socket.on("disconnect", () => {
       setStatus("disconnected");
+    });
+
+    // A failed first attempt means there's no realtime server to reach, so stop
+    // showing "Connecting…" forever. After a real connection drops, failed
+    // retries keep the "Reconnecting…" state instead.
+    socket.on("connect_error", () => {
+      setStatus(hasConnected ? "disconnected" : "solo");
     });
 
     socket.io.on("reconnect", () => {
